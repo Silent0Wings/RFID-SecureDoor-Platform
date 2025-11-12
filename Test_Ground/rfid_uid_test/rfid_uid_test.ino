@@ -4,6 +4,8 @@
 #define SS_PIN 21
 #define RST_PIN 22
 
+// it just extract the unique id 
+
 MFRC522 rfid(SS_PIN, RST_PIN);
 
 void setup() {

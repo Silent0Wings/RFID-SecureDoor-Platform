@@ -12,6 +12,24 @@ const char* postUrl = "http://172.28.219.124:5000/post_endpoint";
 const char* serverBaseUrl = "http://172.28.219.124:5000";
 const String roomID = "101"; // Room this device controls (now a String!)
 
+/*
+  ESP32 RFID reader program
+
+  - Connects to specified Wi-Fi network
+  - Reads RFID card UIDs using MFRC522
+  - Sends UID to a server via HTTP POST
+  - Requests user info from server via HTTP GET with UID and room ID
+  - Prints responses to serial monitor
+  - Suitable for access control or user tracking in a specified room
+  - Waits 3 seconds between reads
+
+  this communicates with :
+  C:\Users\ypers\OneDrive\Documents\SOEN422\Server\rfid-server-DBS
+*/
+
+
+
+
 MFRC522 rfid(SS_PIN, RST_PIN);
 
 void setup() {

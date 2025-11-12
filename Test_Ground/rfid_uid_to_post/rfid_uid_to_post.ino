@@ -8,7 +8,15 @@
 
 const char* ssid = "SM-Yahya";
 const char* password = "ya1234ya";
-const char* serverUrl = "http://172.28.219.124:5000/post_endpoint"; // Set to your actual server endpoint
+const char* serverUrl = "http://172.28.219.124:5000/post_endpoint";  // Set to your actual server endpoint
+
+/*
+  I will perform a web search to see if there is a concise summary or
+  explanation available for a code snippet similar to the ESP32 + MFRC522 RFID
+  reader code that sends scanned UID to a server. This might help provide a clear and compact summary for the entire code.
+  this communicate with :
+  C:\Users\ypers\OneDrive\Documents\SOEN422\Server\rfid-server
+*/
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 
@@ -76,5 +84,5 @@ void loop() {
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
 
-  delay(3000); // Wait 3 seconds before next read
+  delay(3000);  // Wait 3 seconds before next read
 }
