@@ -30,7 +30,7 @@ async function loadUsers() {
     let hasData = false;
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return; // skip header row
-      // ignore completely empty rows
+
       if (
         !row.getCell(1).value &&
         !row.getCell(2).value &&
@@ -48,8 +48,8 @@ async function loadUsers() {
         password: row.getCell(2).value,
         uid: row.getCell(3).value,
         counter: row.getCell(4).value || 0,
-        roomID: row.getCell(5).value,
-        access: row.getCell(6).value, // e.g. TRUE/FALSE or YES/NO (case-insensitive)
+        roomID: row.getCell(5).value, // Return as-is
+        access: row.getCell(6).value,
         rowNumber,
       };
       users.push(userObj);
@@ -58,6 +58,8 @@ async function loadUsers() {
     if (!hasData) {
       console.warn("Excel file loaded but has no user records.");
     }
+
+    console.log("Loaded users:", JSON.stringify(users, null, 2));
   } catch (err) {
     console.error("Error loading Excel file:", err);
     users = [];
@@ -72,7 +74,7 @@ async function saveUsers() {
   }
   users.forEach((user) => {
     const row = worksheet.getRow(user.rowNumber);
-    row.getCell(4).value = user.counter; // Update counter cell
+    row.getCell(4).value = user.counter;
     row.commit();
   });
   await workbook.xlsx.writeFile(filePath);
@@ -90,16 +92,36 @@ app.get("/user/:uid", (req, res) => {
     return res.status(404).json({ error: "UID not found" });
   }
 
-  // If roomID is provided, optionally check match
-  if (
-    requestedRoomID &&
-    user.roomID &&
-    String(user.roomID) !== String(requestedRoomID)
-  ) {
-    return res.status(403).json({ error: "RoomID does not match for user" });
+  // Convert roomID to array by splitting on comma
+  let allowedRooms = [];
+  if (user.roomID) {
+    allowedRooms = String(user.roomID)
+      .split("|")
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0); // Remove empty strings
   }
 
-  // Check access flag ('access' column) for TRUE/YES (case insensitive)
+  console.log(
+    `User: ${user.user}, Raw roomID: ${user.roomID}, Allowed rooms array:`,
+    allowedRooms,
+    `Requested: ${requestedRoomID}`
+  );
+
+  // If roomID is provided in query, check if it's in the allowed rooms array
+  if (requestedRoomID) {
+    if (!allowedRooms.includes(String(requestedRoomID))) {
+      return res.status(403).json({
+        error: `User ${user.user} does not have access to room ${requestedRoomID}`,
+        user: user.user,
+        uid: user.uid,
+        roomID: user.roomID,
+        allowedRoomsArray: allowedRooms,
+        access: false,
+      });
+    }
+  }
+
+  // Check access flag
   const accessStr = String(user.access).toLowerCase();
   const hasAccess =
     accessStr === "true" || accessStr === "yes" || accessStr === "1";
@@ -109,12 +131,13 @@ app.get("/user/:uid", (req, res) => {
       user: user.user,
       uid: user.uid,
       roomID: user.roomID,
+      allowedRoomsArray: allowedRooms,
       access: false,
       error: "Access denied",
     });
   }
 
-  // User has access
+  // User has access to this room
   const {
     user: username,
     password,
@@ -128,7 +151,8 @@ app.get("/user/:uid", (req, res) => {
     password,
     uid: userUid,
     counter,
-    roomID,
+    roomID, // Return as-is, original format
+    allowedRoomsArray: allowedRooms, // Return as array for clarity
     access: hasAccess,
   });
 });
@@ -146,7 +170,7 @@ app.post("/post_endpoint", async (req, res) => {
     return res.status(404).send("UID not found");
   }
 
-  // Check access flag before allowing counter update
+  // Check access flag
   const accessStr = String(user.access).toLowerCase();
   const hasAccess =
     accessStr === "true" || accessStr === "yes" || accessStr === "1";
@@ -163,7 +187,7 @@ app.post("/post_endpoint", async (req, res) => {
 loadUsers()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`Server running on http://localhost:5000`);
     });
   })
   .catch((err) => {

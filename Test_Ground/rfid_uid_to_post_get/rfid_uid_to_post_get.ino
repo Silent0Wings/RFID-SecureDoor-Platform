@@ -8,9 +8,10 @@
 
 const char* ssid = "SM-Yahya";
 const char* password = "ya1234ya";
-const char* postUrl = "http://172.28.219.124:5000/post_endpoint"; // POST endpoint
-const char* serverBaseUrl = "http://172.28.219.124:5000";         // For GET endpoint
-const size_t roomID = 101; 
+const char* postUrl = "http://172.28.219.124:5000/post_endpoint";
+const char* serverBaseUrl = "http://172.28.219.124:5000";
+const String roomID = "101"; // Room this device controls (now a String!)
+
 MFRC522 rfid(SS_PIN, RST_PIN);
 
 void setup() {
@@ -19,7 +20,6 @@ void setup() {
   rfid.PCD_Init();
   Serial.println("Ready to scan RFID...");
 
-  // Connect to WiFi
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi..");
   while (WiFi.status() != WL_CONNECTED) {
@@ -29,7 +29,6 @@ void setup() {
   Serial.println("\nWiFi connected!");
 }
 
-// Send UID as POST request to increment counter
 void sendUID(String uidStr) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
@@ -52,21 +51,26 @@ void sendUID(String uidStr) {
   }
 }
 
-// GET user info by UID
-void getUserInfo(String uidStr) {
+void getUserInfo(String uidStr, String roomID) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    // Add ?roomID=roomID as a query parameter
-    String getUrl = String(serverBaseUrl) + "/user/" + uidStr + "?roomID=" + String(roomID);
+    String getUrl = String(serverBaseUrl) + "/user/" + uidStr + "?roomID=" + roomID;
+    Serial.print("Requesting GET for UID ");
+    Serial.print(uidStr);
+    Serial.print(" and roomID ");
+    Serial.println(roomID);
+
     http.begin(getUrl);
 
     int httpResponseCode = http.GET();
 
     if (httpResponseCode > 0) {
       String response = http.getString();
-      Serial.println("GET Response: " + response);
+      Serial.print("GET Response: ");
+      Serial.println(response);
     } else {
-      Serial.println("GET failed: " + String(httpResponseCode));
+      Serial.print("GET failed: ");
+      Serial.println(httpResponseCode);
     }
     http.end();
   } else {
@@ -74,13 +78,10 @@ void getUserInfo(String uidStr) {
   }
 }
 
-
 void loop() {
-  // Check for new RFID card
   if (!rfid.PICC_IsNewCardPresent()) return;
   if (!rfid.PICC_ReadCardSerial()) return;
 
-  // Convert UID bytes to uppercase hex string
   String uidStr = "";
   for (byte i = 0; i < rfid.uid.size; i++) {
     if (rfid.uid.uidByte[i] < 0x10) uidStr += "0";
@@ -91,18 +92,15 @@ void loop() {
   Serial.print("UID Hex: ");
   Serial.println(uidStr);
 
-  // Send UID as POST (increment counter)
   Serial.print("POST data: ");
   Serial.println("uid=" + uidStr);
   sendUID(uidStr);
 
-  // Retrieve user info using GET
   Serial.println("Requesting user info...");
-  getUserInfo(uidStr);
+  getUserInfo(uidStr, roomID); // roomID is a String already
 
-  // Halt card and stop encryption
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
 
-  delay(3000); // Wait 3 seconds before next read
+  delay(3000);
 }
