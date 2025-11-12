@@ -10,7 +10,7 @@ const char* ssid = "SM-Yahya";
 const char* password = "ya1234ya";
 const char* postUrl = "http://172.28.219.124:5000/post_endpoint"; // POST endpoint
 const char* serverBaseUrl = "http://172.28.219.124:5000";         // For GET endpoint
-
+const size_t roomID = 101; 
 MFRC522 rfid(SS_PIN, RST_PIN);
 
 void setup() {
@@ -56,7 +56,8 @@ void sendUID(String uidStr) {
 void getUserInfo(String uidStr) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    String getUrl = String(serverBaseUrl) + "/user/" + uidStr;
+    // Add ?roomID=roomID as a query parameter
+    String getUrl = String(serverBaseUrl) + "/user/" + uidStr + "?roomID=" + String(roomID);
     http.begin(getUrl);
 
     int httpResponseCode = http.GET();
@@ -72,6 +73,7 @@ void getUserInfo(String uidStr) {
     Serial.println("WiFi not connected");
   }
 }
+
 
 void loop() {
   // Check for new RFID card

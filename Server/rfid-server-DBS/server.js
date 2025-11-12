@@ -35,7 +35,9 @@ async function loadUsers() {
         !row.getCell(1).value &&
         !row.getCell(2).value &&
         !row.getCell(3).value &&
-        !row.getCell(4).value
+        !row.getCell(4).value &&
+        !row.getCell(5).value &&
+        !row.getCell(6).value
       ) {
         return;
       }
@@ -46,7 +48,9 @@ async function loadUsers() {
         password: row.getCell(2).value,
         uid: row.getCell(3).value,
         counter: row.getCell(4).value || 0,
-        rowNumber, // keep track for updating later
+        roomID: row.getCell(5).value,
+        access: row.getCell(6).value, // e.g. TRUE/FALSE or YES/NO (case-insensitive)
+        rowNumber,
       };
       users.push(userObj);
     });
@@ -79,14 +83,54 @@ app.get("/user/:uid", (req, res) => {
     return res.status(404).json({ error: "No user data available" });
   }
   const uid = req.params.uid;
+  const requestedRoomID = req.query.roomID;
   const user = users.find((u) => u.uid == uid);
 
-  if (user) {
-    const { user: username, password, uid, counter } = user;
-    res.json({ user: username, password, uid, counter });
-  } else {
-    res.status(404).json({ error: "UID not found" });
+  if (!user) {
+    return res.status(404).json({ error: "UID not found" });
   }
+
+  // If roomID is provided, optionally check match
+  if (
+    requestedRoomID &&
+    user.roomID &&
+    String(user.roomID) !== String(requestedRoomID)
+  ) {
+    return res.status(403).json({ error: "RoomID does not match for user" });
+  }
+
+  // Check access flag ('access' column) for TRUE/YES (case insensitive)
+  const accessStr = String(user.access).toLowerCase();
+  const hasAccess =
+    accessStr === "true" || accessStr === "yes" || accessStr === "1";
+
+  if (!hasAccess) {
+    return res.status(403).json({
+      user: user.user,
+      uid: user.uid,
+      roomID: user.roomID,
+      access: false,
+      error: "Access denied",
+    });
+  }
+
+  // User has access
+  const {
+    user: username,
+    password,
+    uid: userUid,
+    counter,
+    roomID,
+    access,
+  } = user;
+  res.json({
+    user: username,
+    password,
+    uid: userUid,
+    counter,
+    roomID,
+    access: hasAccess,
+  });
 });
 
 app.post("/post_endpoint", async (req, res) => {
@@ -98,13 +142,22 @@ app.post("/post_endpoint", async (req, res) => {
 
   const user = users.find((u) => u.uid == uid);
 
-  if (user) {
-    user.counter++;
-    await saveUsers();
-    res.send(`UID ${uid} recognized. Counter updated.`);
-  } else {
-    res.status(404).send("UID not found");
+  if (!user) {
+    return res.status(404).send("UID not found");
   }
+
+  // Check access flag before allowing counter update
+  const accessStr = String(user.access).toLowerCase();
+  const hasAccess =
+    accessStr === "true" || accessStr === "yes" || accessStr === "1";
+
+  if (!hasAccess) {
+    return res.status(403).send("Access denied");
+  }
+
+  user.counter++;
+  await saveUsers();
+  res.send(`UID ${uid} recognized. Counter updated.`);
 });
 
 loadUsers()
