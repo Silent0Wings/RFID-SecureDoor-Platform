@@ -13,29 +13,59 @@ const filePath = "users.xlsx";
 let worksheet;
 let users = [];
 
-// Load the Excel file and cache users array on server startup
+// Robust Excel loading function
 async function loadUsers() {
-  await workbook.xlsx.readFile(filePath);
-  worksheet = workbook.worksheets[0];
+  try {
+    await workbook.xlsx.readFile(filePath);
 
-  // Extract data from worksheet rows starting from row 2 (assuming headers in row 1)
-  users = [];
-  worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return; // skip header row
+    if (workbook.worksheets.length === 0) {
+      console.warn("Excel file has no worksheets.");
+      users = [];
+      worksheet = null;
+      return;
+    }
+    worksheet = workbook.worksheets[0];
+    users = [];
 
-    const userObj = {
-      user: row.getCell(1).value,
-      password: row.getCell(2).value,
-      uid: row.getCell(3).value,
-      counter: row.getCell(4).value || 0,
-      rowNumber, // keep track of the row number for updating later
-    };
-    users.push(userObj);
-  });
+    let hasData = false;
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // skip header row
+      // ignore completely empty rows
+      if (
+        !row.getCell(1).value &&
+        !row.getCell(2).value &&
+        !row.getCell(3).value &&
+        !row.getCell(4).value
+      ) {
+        return;
+      }
+      hasData = true;
+
+      const userObj = {
+        user: row.getCell(1).value,
+        password: row.getCell(2).value,
+        uid: row.getCell(3).value,
+        counter: row.getCell(4).value || 0,
+        rowNumber, // keep track for updating later
+      };
+      users.push(userObj);
+    });
+
+    if (!hasData) {
+      console.warn("Excel file loaded but has no user records.");
+    }
+  } catch (err) {
+    console.error("Error loading Excel file:", err);
+    users = [];
+    worksheet = null;
+  }
 }
 
-// Save updated users back to worksheet and file
 async function saveUsers() {
+  if (!worksheet) {
+    console.warn("No worksheet to save.");
+    return;
+  }
   users.forEach((user) => {
     const row = worksheet.getRow(user.rowNumber);
     row.getCell(4).value = user.counter; // Update counter cell
@@ -45,11 +75,13 @@ async function saveUsers() {
 }
 
 app.get("/user/:uid", (req, res) => {
+  if (!users.length) {
+    return res.status(404).json({ error: "No user data available" });
+  }
   const uid = req.params.uid;
   const user = users.find((u) => u.uid == uid);
 
   if (user) {
-    // Return user info except for rowNumber (used internally)
     const { user: username, password, uid, counter } = user;
     res.json({ user: username, password, uid, counter });
   } else {
@@ -57,8 +89,10 @@ app.get("/user/:uid", (req, res) => {
   }
 });
 
-
 app.post("/post_endpoint", async (req, res) => {
+  if (!users.length) {
+    return res.status(404).send("No user data available");
+  }
   const uid = req.body.uid;
   console.log("Received UID:", uid);
 
@@ -73,7 +107,6 @@ app.post("/post_endpoint", async (req, res) => {
   }
 });
 
-// Initialize server by loading users first
 loadUsers()
   .then(() => {
     app.listen(PORT, () => {
