@@ -104,6 +104,10 @@ String lastStatsError = "";
 String lastStatsUser = "";
 unsigned long lastStatsMillis = 0;
 
+
+String lastLoginSuggestedUser = "";
+String lastLoginSuggestedUid = "";
+
 // =============================
 // Function prototypes
 // =============================
@@ -160,7 +164,8 @@ void handleCardUid(const String &uid) {
   } else {
     Serial.println("RFID in ACCESS mode, checking permissions...");
     lastStatus = "ACCESS_ATTEMPT";
-    checkAccessRFID(uid);
+    checkAccessRFID(uid);  // normal access check
+    lookupUserByUid(uid);  // extra: update login suggestion
   }
 }
 
@@ -175,24 +180,25 @@ String buildHomePageHtml() {
     "<style>"
     "body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:1rem;text-align:center;}"
     ".card{max-width:480px;margin:0 auto;border:1px solid #ccc;"
-      "padding:1rem;border-radius:8px;}"
+    "padding:1rem;border-radius:8px;}"
     "a.button{display:block;margin:0.5rem 0;padding:0.5rem 1rem;"
-      "border:1px solid #007bff;border-radius:4px;text-decoration:none;"
-      "color:#007bff;}"
+    "border:1px solid #007bff;border-radius:4px;text-decoration:none;"
+    "color:#007bff;}"
     "</style>"
     "</head><body>"
     "<div class='card'>"
     "<h2>ESP32 Access Control</h2>"
-    "<p>Room " + roomID + "</p>"
-    "<a class='button' href='/login'>Admin login</a>"
-    "<a class='button' href='/register'>Register new card</a>"
-    "<a class='button' href='/status'>System status</a>"
-    "</div>"
-    "</body></html>";
+    "<p>Room "
+    + roomID + "</p>"
+               "<a class='button' href='/login'>Admin login</a>"
+               "<a class='button' href='/register'>Register new card</a>"
+               "<a class='button' href='/status'>System status</a>"
+               "</div>"
+               "</body></html>";
   return html;
 }
 
-String buildRegisterPageHtml(const String& message) {
+String buildRegisterPageHtml(const String &message) {
   String html;
   html =
     "<!DOCTYPE html><html><head>"
@@ -200,10 +206,10 @@ String buildRegisterPageHtml(const String& message) {
     "<style>"
     "body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:1rem;}"
     ".card{max-width:480px;margin:0 auto;border:1px solid #ccc;"
-      "padding:1rem;border-radius:8px;}"
+    "padding:1rem;border-radius:8px;}"
     "label{display:block;margin-top:0.5rem;}"
     "input[type=text],input[type=password]{width:100%;padding:0.5rem;"
-      "margin-top:0.25rem;box-sizing:border-box;}"
+    "margin-top:0.25rem;box-sizing:border-box;}"
     "button{margin-top:1rem;padding:0.5rem 1rem;width:100%;}"
     ".msg{margin-top:0.5rem;white-space:pre-wrap;}"
     ".links{margin-top:1rem;text-align:center;}"
@@ -251,6 +257,30 @@ String extractJsonField(const String &src, const char *key) {
 // =============================
 // Backend calls for RFID
 // =============================
+
+void lookupUserByUid(const String &uid) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  String url = String("http://172.28.219.124:5000/uid-name/") + uid;
+  Serial.print("LOOKUP: GET ");
+  Serial.println(url);
+
+  http.begin(url);
+  int code = http.GET();
+  if (code == 200) {
+    String resp = http.getString();
+    String uname = extractJsonField(resp, "user");
+    if (uname.length()) {
+      lastLoginSuggestedUser = uname;
+      lastLoginSuggestedUid = uid;
+      Serial.print("LOOKUP: got username ");
+      Serial.println(uname);
+    }
+  }
+  http.end();
+}
+
 
 // Registration: called when waitingForRFID == true
 void tryRegisterRFID(const String &uid) {
@@ -402,9 +432,22 @@ String buildLoginFormHtml() {
     "</form>"
     "<div class='links'><a href='/'>Back</a></div>"
     "</div>"
+    "<script>"
+    "setInterval(function(){"
+    "fetch('/login-hint')"
+    ".then(function(r){if(!r.ok) return null; return r.json();})"
+    ".then(function(d){"
+    "if(!d || !d.user) return;"
+    "var inp = document.querySelector('input[name=\"user\"]');"
+    "if(inp && !inp.value){ inp.value = d.user; }"
+    "})"
+    ".catch(function(e){});"
+    "},1000);"
+    "</script>"
     "</body></html>";
   return html;
 }
+
 
 String buildLoginResultHtml(const String &tableHtml, const String &errorText) {
   String html;
@@ -501,12 +544,23 @@ String buildStatusPageHtml() {
 // ---------------------------
 void setupRoutes() {
   // HOME
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/html", buildHomePageHtml());
   });
 
+
+  // LOGIN HINT - JSON with last suggested username from scanned card
+  server.on("/login-hint", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String json = "{";
+    json += "\"uid\":\"" + lastLoginSuggestedUid + "\",";
+    json += "\"user\":\"" + lastLoginSuggestedUser + "\"";
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+
+
   // REGISTER (UI to set tempUsername/tempPassword and open RFID window)
-  server.on("/register", HTTP_GET, [](AsyncWebServerRequest* request) {
+  server.on("/register", HTTP_GET, [](AsyncWebServerRequest *request) {
     // no params: show registration form
     if (!request->hasParam("user") || !request->hasParam("password")) {
       request->send(200, "text/html", buildRegisterPageHtml(""));
@@ -517,17 +571,18 @@ void setupRoutes() {
     tempPassword = request->getParam("password")->value();
 
     waitingForRFID = true;
-    rfidTimeout    = millis() + 15000; // 15s window, adjust if needed
-    lastStatus     = "REG_WAIT";
+    rfidTimeout = millis() + 15000;  // 15s window, adjust if needed
+    lastStatus = "REG_WAIT";
 
     String msg = "Registration started.\n\n"
-                 "User: " + tempUsername + "\n"
-                 "Tap the new card on the reader within 15 seconds.";
+                 "User: "
+                 + tempUsername + "\n"
+                                  "Tap the new card on the reader within 15 seconds.";
     request->send(200, "text/html", buildRegisterPageHtml(msg));
   });
 
   // LOGIN (unchanged from your cleaned version)
-  server.on("/login", HTTP_GET, [](AsyncWebServerRequest* request) {
+  server.on("/login", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!request->hasParam("user") || !request->hasParam("password")) {
       request->send(200, "text/html", buildLoginFormHtml());
       return;
@@ -558,29 +613,38 @@ void setupRoutes() {
     }
 
     lastStatsHttpCode = httpCode;
-    lastStatsRawJson  = userJson;
-    lastStatsMillis   = millis();
+    lastStatsRawJson = userJson;
+    lastStatsMillis = millis();
 
     String tableHtml;
 
     if (errorText.isEmpty() && httpCode == 200) {
-      const String vUser    = extractJsonField(userJson, "user");
-      const String vPass    = extractJsonField(userJson, "password");
-      const String vUid     = extractJsonField(userJson, "uid");
+      // CLEAR LOGIN HINTS ON SUCCESS
+      lastLoginSuggestedUser = "";
+      lastLoginSuggestedUid = "";
+      const String vUser = extractJsonField(userJson, "user");
+      const String vPass = extractJsonField(userJson, "password");
+      const String vUid = extractJsonField(userJson, "uid");
       const String vCounter = extractJsonField(userJson, "counter");
-      const String vRoom    = extractJsonField(userJson, "roomID");
-      const String vAccess  = extractJsonField(userJson, "access");
+      const String vRoom = extractJsonField(userJson, "roomID");
+      const String vAccess = extractJsonField(userJson, "access");
 
       tableHtml =
         "<table>"
         "<tr><th>Field</th><th>Value</th></tr>"
-        "<tr><td>user</td><td>" + vUser + "</td></tr>"
-        "<tr><td>password</td><td>" + vPass + "</td></tr>"
-        "<tr><td>uid</td><td>" + vUid + "</td></tr>"
-        "<tr><td>counter</td><td>" + vCounter + "</td></tr>"
-        "<tr><td>roomID</td><td>" + vRoom + "</td></tr>"
-        "<tr><td>access</td><td>" + vAccess + "</td></tr>"
-        "</table>";
+        "<tr><td>user</td><td>"
+        + vUser + "</td></tr>"
+                  "<tr><td>password</td><td>"
+        + vPass + "</td></tr>"
+                  "<tr><td>uid</td><td>"
+        + vUid + "</td></tr>"
+                 "<tr><td>counter</td><td>"
+        + vCounter + "</td></tr>"
+                     "<tr><td>roomID</td><td>"
+        + vRoom + "</td></tr>"
+                  "<tr><td>access</td><td>"
+        + vAccess + "</td></tr>"
+                    "</table>";
 
       lastStatsError = "";
     } else {
@@ -594,12 +658,12 @@ void setupRoutes() {
   });
 
   // STATUS
-  server.on("/status", HTTP_GET, [](AsyncWebServerRequest* request) {
+  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/html", buildStatusPageHtml());
   });
 
   // 404 -> home
-  server.onNotFound([](AsyncWebServerRequest* request) {
+  server.onNotFound([](AsyncWebServerRequest *request) {
     request->redirect("/");
   });
 }

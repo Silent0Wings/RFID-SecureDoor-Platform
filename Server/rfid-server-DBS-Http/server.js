@@ -45,6 +45,8 @@ const filePath = "users.xlsx";
 let worksheet = null;
 let users = [];
 
+
+
 // ----------------------
 // Data helpers
 // ----------------------
@@ -213,6 +215,23 @@ app.get("/", (req, res) => {
     routes: ["/stats", "/user/:uid", "/register"],
   });
 });
+
+
+// GET /uid-name/:uid - lookup username for a given UID, no access check or counter increment
+app.get("/uid-name/:uid", (req, res) => {
+  if (!users.length) {
+    return res.status(404).json({ error: "No user data available" });
+  }
+
+  const { uid } = req.params;
+  const user = findUserByUid(uid);
+  if (!user) {
+    return res.status(404).json({ error: "UID not found" });
+  }
+
+  return res.json({ user: user.user, uid: user.uid });
+});
+
 
 // POST /register
 app.post("/register", async (req, res) => {
