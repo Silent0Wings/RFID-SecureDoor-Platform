@@ -1,3 +1,57 @@
+/*
+  ESP32 RFID access controller with web UI and HTTP backend.
+
+  Purpose:
+  - Runs on an ESP32 with an MFRC522 RFID reader.
+  - Talks to a Node.js backend that stores users in an Excel file.
+  - Exposes simple web pages for home, registration, login, and status.
+
+  Backend endpoints used:
+  - registerUrl  (POST /register)    : Register a new card with user, password, uid, roomID.
+  - accessBaseUrl (GET /user/:uid)   : Check if a given UID has access to a specific room.
+  - statsUrl     (GET /stats)        : Fetch a single user's data by username/password.
+
+  RFID flow:
+  - loop() polls the MFRC522; readCardUid() builds the UID string.
+  - handleCardUid() routes the UID:
+      - If a registration window is active (waitingForRFID + rfidTimeout), calls tryRegisterRFID().
+      - Otherwise, calls checkAccessRFID() to validate access.
+  - handleRegistrationTimeout() closes the registration window and updates lastStatus on timeout.
+
+  HTTP calls:
+  - tryRegisterRFID():
+      - Uses tempUsername/tempPassword and the scanned UID.
+      - Sends a JSON POST to /register with user, password, uid, roomID.
+      - Updates lastStatus and lastStats* fields based on HTTP result.
+  - checkAccessRFID():
+      - Calls /user/:uid?roomID=... on the backend.
+      - Parses the flat JSON "access" field.
+      - Updates lastStatus (ACCESS_OK / ACCESS_DENIED / errors) and lastStats*.
+      - Hook points for door relay, LEDs, buzzer are marked with TODO comments.
+
+  Web interface (AsyncWebServer):
+  - GET "/"        : Home page with buttons for Admin login, Register new card, and System status.
+  - GET "/register":
+      - No params    -> shows a form for user/password.
+      - With params  -> stores tempUsername/tempPassword, opens a 15s RFID registration window,
+                        and instructs the user to tap the new card.
+  - GET "/login"   :
+      - No params    -> shows login form.
+      - With params  -> calls backend /stats, renders a table with that single user's fields,
+                        and shows backend HTTP status and raw JSON.
+  - GET "/status"  : Shows WiFi state, last UID, lastStatus, age of last RFID event,
+                     and last backend HTTP details plus raw JSON.
+  - onNotFound()   : Redirects any unknown path to "/".
+
+  State for UI and debugging:
+  - tempUsername, tempPassword        : pending registration credentials.
+  - waitingForRFID, rfidTimeout       : control the registration window.
+  - lastUid, lastStatus, lastEventMillis
+  - lastStatsHttpCode, lastStatsRawJson, lastStatsError, lastStatsUser, lastStatsMillis
+    These are used by the status and login pages and by Serial logs to show the latest events.
+*/
+
+
 #define ENABLE_WEBSERVER_AUTHENTICATION 0  // Disable MD5 auth in ESPAsyncWebServer
 
 #include <WiFi.h>

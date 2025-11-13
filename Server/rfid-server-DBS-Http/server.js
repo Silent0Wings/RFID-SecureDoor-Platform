@@ -1,4 +1,36 @@
 // server.js
+/*
+  server.js - Excel-backed access control backend
+
+  Features:
+  - Loads user records from users.xlsx into memory on startup.
+  - Normalizes access flags and parses multi-room permissions from roomID (split by "|").
+  - Provides helpers to find users by username/password or by UID.
+
+  HTTP routes:
+  - GET /stats
+    - Input: query user, password
+    - Output: JSON for that single user (no full table) or error codes for invalid/missing credentials.
+
+  - GET /user/:uid?roomID=...
+    - Checks if the UID exists and if the requested room is allowed.
+    - Validates access flag.
+    - On successful access, increments the user's counter and saves it back to users.xlsx.
+    - Returns a JSON payload with user info and allowedRooms.
+
+  - POST /register
+    - Input: JSON body with user, password, uid, roomID.
+    - Enforces UID + roomID uniqueness.
+    - Appends a new row to users.xlsx with default counter = 0 and access = TRUE.
+    - Reloads users into memory and returns a JSON success message.
+
+  - GET /
+    - Simple health/status endpoint that reports backend status and available routes.
+
+  Persistence:
+  - saveCounters() writes updated counter values back to the Excel worksheet.
+*/
+
 const express = require("express");
 const ExcelJS = require("exceljs");
 
