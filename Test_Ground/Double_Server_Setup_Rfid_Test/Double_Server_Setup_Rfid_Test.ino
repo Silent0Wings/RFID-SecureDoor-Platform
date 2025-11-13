@@ -532,11 +532,20 @@ String buildStatusPageHtml() {
     html += "<h3>Last stats JSON</h3><pre>" + lastStatsRawJson + "</pre>";
   }
 
+ if (lastStatsRawJson.length()) {
+    html += "<h3>Last stats JSON</h3><pre>" + lastStatsRawJson + "</pre>";
+  }
+
   html +=
     "<div class='links'><a href='/'>Home</a> | <a href='/login'>Login</a></div>"
-    "</div></body></html>";
+    "</div>"
+    "<script>"
+    "setTimeout(function(){ location.reload(); }, 2000);"  // auto-refresh every 2s
+    "</script>"
+    "</body></html>";
 
   return html;
+
 }
 
 // ---------------------------
