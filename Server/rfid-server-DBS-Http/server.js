@@ -1,224 +1,229 @@
+// server.js
 const express = require("express");
-const bodyParser = require("body-parser");
 const ExcelJS = require("exceljs");
 
 const app = express();
 const PORT = 5000;
 
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 
 const workbook = new ExcelJS.Workbook();
 const filePath = "users.xlsx";
-let worksheet;
+let worksheet = null;
 let users = [];
 
-// Robust Excel loading function
+// ----------------------
+// Data helpers
+// ----------------------
+function rowToUser(row, rowNumber) {
+  const c = (i) => row.getCell(i).value;
+  return {
+    user: c(1),
+    password: c(2),
+    uid: c(3),
+    counter: c(4) || 0,
+    roomID: c(5),
+    access: c(6),
+    rowNumber,
+  };
+}
+
+function normalizeAccess(access) {
+  const s = String(access).toLowerCase();
+  return s === "true" || s === "yes" || s === "1";
+}
+
+function parseAllowedRooms(roomID) {
+  if (!roomID) return [];
+  return String(roomID)
+    .split("|")
+    .map((r) => r.trim())
+    .filter(Boolean);
+}
+
+function userPayload(user, extra = {}) {
+  return {
+    user: user.user,
+    password: user.password,
+    uid: user.uid,
+    counter: user.counter,
+    roomID: user.roomID,
+    access: normalizeAccess(user.access),
+    ...extra,
+  };
+}
+
+function findUserByCredentials(user, password) {
+  const u = String(user);
+  const p = String(password);
+  return (
+    users.find((x) => String(x.user) === u && String(x.password) === p) || null
+  );
+}
+
+function findUserByUid(uid) {
+  const target = String(uid);
+  return users.find((u) => String(u.uid) === target) || null;
+}
+
+// ----------------------
+// Excel load/save
+// ----------------------
 async function loadUsers() {
+  users = [];
+  worksheet = null;
+
   try {
     await workbook.xlsx.readFile(filePath);
-
-    if (workbook.worksheets.length === 0) {
-      console.warn("Excel file has no worksheets.");
-      users = [];
-      worksheet = null;
+    worksheet = workbook.worksheets[0];
+    if (!worksheet) {
+      console.warn("Excel has no worksheets.");
       return;
     }
-    worksheet = workbook.worksheets[0];
-    users = [];
 
-    let hasData = false;
     worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // skip header row
-
-      if (
-        !row.getCell(1).value &&
-        !row.getCell(2).value &&
-        !row.getCell(3).value &&
-        !row.getCell(4).value &&
-        !row.getCell(5).value &&
-        !row.getCell(6).value
-      ) {
-        return;
-      }
-      hasData = true;
-
-      const userObj = {
-        user: row.getCell(1).value,
-        password: row.getCell(2).value,
-        uid: row.getCell(3).value,
-        counter: row.getCell(4).value || 0,
-        roomID: row.getCell(5).value, // Return as-is
-        access: row.getCell(6).value,
-        rowNumber,
-      };
-      users.push(userObj);
+      if (rowNumber === 1) return; // header
+      const hasAny = [1, 2, 3, 4, 5, 6].some((i) => row.getCell(i).value);
+      if (!hasAny) return;
+      users.push(rowToUser(row, rowNumber));
     });
 
-    if (!hasData) {
-      console.warn("Excel file loaded but has no user records.");
-    }
-
-    console.log("Loaded users:", JSON.stringify(users, null, 2));
+    console.log(`Loaded ${users.length} users`);
   } catch (err) {
     console.error("Error loading Excel file:", err);
-    users = [];
-    worksheet = null;
   }
 }
 
-async function saveUsers() {
-  if (!worksheet) {
-    console.warn("No worksheet to save.");
-    return;
-  }
-  users.forEach((user) => {
-    const row = worksheet.getRow(user.rowNumber);
-    row.getCell(4).value = user.counter;
+async function saveCounters() {
+  if (!worksheet) return;
+  for (const u of users) {
+    const row = worksheet.getRow(u.rowNumber);
+    row.getCell(4).value = u.counter;
     row.commit();
-  });
+  }
   await workbook.xlsx.writeFile(filePath);
 }
 
+// ----------------------
+// Routes
+// ----------------------
+
 // GET /stats?user=...&password=...
-// Returns table: user password uid counter roomID access
+// Only returns that single user's data
 app.get("/stats", (req, res) => {
   const { user, password } = req.query;
 
   if (!users.length) {
-    return res.status(404).type("text/plain").send("No user data available");
+    return res.status(404).json({ error: "No user data available" });
+  }
+  if (!user || !password) {
+    return res.status(400).json({ error: "Missing user or password" });
   }
 
-  // simple credential check: require any row with same user+password
-  const ok = users.some(
-    (u) =>
-      String(u.user) === String(user) && String(u.password) === String(password)
-  );
-  if (!ok) {
-    return res.status(401).type("text/plain").send("Invalid credentials");
+  const entry = findUserByCredentials(user, password);
+  if (!entry) {
+    return res.status(401).json({ error: "Invalid credentials" });
   }
 
-  let out = "user\tpassword\tuid\tcounter\troomID\taccess\n";
-  for (const u of users) {
-    out += `${u.user}\t${u.password}\t${u.uid}\t${u.counter}\t${u.roomID}\t${u.access}\n`;
-  }
-  res.type("text/plain").send(out);
+  return res.status(200).json(userPayload(entry));
 });
 
-app.get("/user/:uid", (req, res) => {
+// GET /user/:uid?roomID=101
+app.get("/user/:uid", async (req, res) => {
   if (!users.length) {
     return res.status(404).json({ error: "No user data available" });
   }
-  const uid = req.params.uid;
-  const requestedRoomID = req.query.roomID;
-  const user = users.find((u) => u.uid == uid);
 
+  const { uid } = req.params;
+  const { roomID } = req.query;
+
+  const user = findUserByUid(uid);
   if (!user) {
     return res.status(404).json({ error: "UID not found" });
   }
 
-  // Convert roomID to array by splitting on comma
-  let allowedRooms = [];
-  if (user.roomID) {
-    allowedRooms = String(user.roomID)
-      .split("|")
-      .map((r) => r.trim())
-      .filter((r) => r.length > 0); // Remove empty strings
+  const allowedRooms = parseAllowedRooms(user.roomID);
+
+  // room check
+  if (roomID && !allowedRooms.includes(String(roomID))) {
+    return res.status(403).json({
+      ...userPayload(user, { allowedRooms }),
+      access: false,
+      error: `User ${user.user} does not have access to room ${roomID}`,
+    });
   }
 
-  console.log(
-    `User: ${user.user}, Raw roomID: ${user.roomID}, Allowed rooms array:`,
-    allowedRooms,
-    `Requested: ${requestedRoomID}`
-  );
-
-  // If roomID is provided in query, check if it's in the allowed rooms array
-  if (requestedRoomID) {
-    if (!allowedRooms.includes(String(requestedRoomID))) {
-      return res.status(403).json({
-        error: `User ${user.user} does not have access to room ${requestedRoomID}`,
-        user: user.user,
-        uid: user.uid,
-        roomID: user.roomID,
-        allowedRoomsArray: allowedRooms,
-        access: false,
-      });
-    }
-  }
-
-  // Check access flag
-  const accessStr = String(user.access).toLowerCase();
-  const hasAccess =
-    accessStr === "true" || accessStr === "yes" || accessStr === "1";
-
+  const hasAccess = normalizeAccess(user.access);
   if (!hasAccess) {
     return res.status(403).json({
-      user: user.user,
-      uid: user.uid,
-      roomID: user.roomID,
-      allowedRoomsArray: allowedRooms,
+      ...userPayload(user, { allowedRooms }),
       access: false,
       error: "Access denied",
     });
   }
 
-  // User has access to this room
-  const {
-    user: username,
-    password,
-    uid: userUid,
-    counter,
-    roomID,
-    access,
-  } = user;
+  // at this point: ACCESS GRANTED -> increment counter
+  user.counter = Number(user.counter || 0) + 1;
+  try {
+    await saveCounters(); // write back to Excel
+  } catch (err) {
+    console.error("Failed to save counters:", err);
+    // still return success; just log the error
+  }
+
+  return res.json(userPayload(user, { allowedRooms }));
+});
+
+app.get("/", (req, res) => {
   res.json({
-    user: username,
-    password,
-    uid: userUid,
-    counter,
-    roomID, // Return as-is, original format
-    allowedRoomsArray: allowedRooms, // Return as array for clarity
-    access: hasAccess,
+    status: "backend ok",
+    routes: ["/stats", "/user/:uid", "/register"],
   });
 });
 
+// POST /register
 app.post("/register", async (req, res) => {
   const { user, password, uid, roomID } = req.body;
   if (!user || !password || !uid || !roomID) {
-    return res.status(400).send("Missing required fields");
+    return res.status(400).json({ error: "Missing required fields" });
   }
 
-  // Check for duplicate UID
-  if (users.find((u) => u.uid === uid && u.roomID === roomID)) {
-    return res.status(409).send("User with this UID for room already exists");
+  // UID + room pair uniqueness
+  const exists = users.find(
+    (u) => String(u.uid) === String(uid) && String(u.roomID) === String(roomID)
+  );
+  if (exists) {
+    return res
+      .status(409)
+      .json({ error: "User with this UID for room already exists" });
   }
 
-  // Prepare Excel row addition
-  const accessValue = "TRUE"; // or set based on admin, form, etc.
-  const counterValue = 0; // new user
+  if (!worksheet) {
+    return res.status(500).json({ error: "Worksheet not available" });
+  }
 
-  // Get index for new row (after current last)
-  const rowIdx = worksheet.lastRow.number + 1;
-  let newRow = worksheet.getRow(rowIdx);
-  newRow.getCell(1).value = user;
-  newRow.getCell(2).value = password;
-  newRow.getCell(3).value = uid;
-  newRow.getCell(4).value = counterValue;
-  newRow.getCell(5).value = roomID; // comma-separated rooms as string
-  newRow.getCell(6).value = accessValue;
-  newRow.commit();
+  const rowIdx = worksheet.lastRow ? worksheet.lastRow.number + 1 : 2;
+  const row = worksheet.getRow(rowIdx);
+  row.getCell(1).value = user;
+  row.getCell(2).value = password;
+  row.getCell(3).value = uid;
+  row.getCell(4).value = 0; // counter
+  row.getCell(5).value = roomID;
+  row.getCell(6).value = "TRUE"; // access flag
+  row.commit();
 
-  // Save workbook and reload users in memory
   await workbook.xlsx.writeFile(filePath);
   await loadUsers();
-  console.log(`Registered new user: ${user}, UID: ${uid}, roomID: ${roomID}`);
-  res.send("Registration successful");
+
+  return res.json({ message: "Registration successful" });
 });
 
+// Bootstrap
 loadUsers()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:5000`);
+      console.log(`Server running on http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
