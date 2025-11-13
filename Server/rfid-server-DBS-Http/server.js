@@ -80,6 +80,31 @@ async function saveUsers() {
   await workbook.xlsx.writeFile(filePath);
 }
 
+// GET /stats?user=...&password=...
+// Returns table: user password uid counter roomID access
+app.get("/stats", (req, res) => {
+  const { user, password } = req.query;
+
+  if (!users.length) {
+    return res.status(404).type("text/plain").send("No user data available");
+  }
+
+  // simple credential check: require any row with same user+password
+  const ok = users.some(
+    (u) =>
+      String(u.user) === String(user) && String(u.password) === String(password)
+  );
+  if (!ok) {
+    return res.status(401).type("text/plain").send("Invalid credentials");
+  }
+
+  let out = "user\tpassword\tuid\tcounter\troomID\taccess\n";
+  for (const u of users) {
+    out += `${u.user}\t${u.password}\t${u.uid}\t${u.counter}\t${u.roomID}\t${u.access}\n`;
+  }
+  res.type("text/plain").send(out);
+});
+
 app.get("/user/:uid", (req, res) => {
   if (!users.length) {
     return res.status(404).json({ error: "No user data available" });
