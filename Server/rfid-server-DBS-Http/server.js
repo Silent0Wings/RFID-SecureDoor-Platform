@@ -45,8 +45,6 @@ const filePath = "users.xlsx";
 let worksheet = null;
 let users = [];
 
-
-
 // ----------------------
 // Data helpers
 // ----------------------
@@ -139,6 +137,28 @@ async function saveCounters() {
   await workbook.xlsx.writeFile(filePath);
 }
 
+async function deleteUserByUid(uid) {
+  if (!worksheet) return false;
+
+  const target = users.find((u) => String(u.uid) === String(uid));
+  if (!target) return false;
+
+  // Clear the row cells (remove the user from Excel)
+  const row = worksheet.getRow(target.rowNumber);
+  for (let i = 1; i <= 6; i++) {
+    row.getCell(i).value = null;
+  }
+  row.commit();
+
+  // Save file
+  await workbook.xlsx.writeFile(filePath);
+
+  // Reload the in-memory users array
+  await loadUsers();
+
+  return true;
+}
+
 // ----------------------
 // Routes
 // ----------------------
@@ -216,7 +236,6 @@ app.get("/", (req, res) => {
   });
 });
 
-
 // GET /uid-name/:uid - lookup username for a given UID, no access check or counter increment
 app.get("/uid-name/:uid", (req, res) => {
   if (!users.length) {
@@ -232,6 +251,36 @@ app.get("/uid-name/:uid", (req, res) => {
   return res.json({ user: user.user, uid: user.uid });
 });
 
+// DELETE /user/:uid
+app.delete("/user/:uid", async (req, res) => {
+  if (!users.length) {
+    return res.status(404).json({ error: "No user data available" });
+  }
+
+  const { uid } = req.params;
+  const found = users.find((u) => String(u.uid) === String(uid));
+
+  if (!found) {
+    return res.status(404).json({ error: "UID not found" });
+  }
+
+  try {
+    const ok = await deleteUserByUid(uid);
+    if (!ok) {
+      return res.status(500).json({ error: "Failed to delete user" });
+    }
+
+    return res.json({
+      message: "User deleted",
+      uid: uid,
+      user: found.user,
+    });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ error: "Delete operation failed", details: err.message });
+  }
+});
 
 // POST /register
 app.post("/register", async (req, res) => {

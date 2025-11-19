@@ -61,11 +61,31 @@
 #include <HTTPClient.h>
 #include <ESPmDNS.h>
 
+// NEW: OLED and I2C display
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
 // =============================
 // RFID pins
 // =============================
 #define SS_PIN 21
 #define RST_PIN 22
+
+// =============================
+// New hardware pins (LEDs, OLED, touch)
+// =============================
+#define LED_RED 13
+#define LED_GREEN 12
+
+#define TOUCH_PIN 14
+
+#define OLED_SDA 4
+#define OLED_SCL 15
+#define OLED_RST 16
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_ADDR 0x3C
 
 // =============================
 // WiFi and backend
@@ -83,6 +103,9 @@ const String roomID = "101";
 MFRC522 rfid(SS_PIN, RST_PIN);
 AsyncWebServer server(80);
 
+// NEW: OLED display object
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
+
 // =============================
 // State
 // =============================
@@ -90,6 +113,14 @@ String tempUsername = "";
 String tempPassword = "";
 bool waitingForRFID = false;
 unsigned long rfidTimeout = 0;
+
+// ---------------------------
+// Delete touch sensor
+// ---------------------------
+bool deleteModeArmed = false;
+unsigned long touchLastTime = 0;
+int touchPressCount = 0;
+
 
 // ---------------------------
 // Global status for web pages
@@ -104,15 +135,25 @@ String lastStatsError = "";
 String lastStatsUser = "";
 unsigned long lastStatsMillis = 0;
 
-
 String lastLoginSuggestedUser = "";
 String lastLoginSuggestedUid = "";
+
+// NEW: hardware state
+bool displayOk = false;
+unsigned long ledOffMillis = 0;
+int lastTouchState = LOW;
 
 // =============================
 // Function prototypes
 // =============================
 void tryRegisterRFID(const String &uid);  // you already implement this somewhere
 void checkAccessRFID(const String &uid);  // you already implement this somewhere
+
+// NEW: helper prototypes
+void updateIndicatorsForStatus();
+void handleTouch();
+void handleLedTimeout();
+void showMsg(const String &l1, const String &l2 = "", const String &l3 = "", bool serial = true);
 
 // ---------------------------
 // Helpers
@@ -130,6 +171,9 @@ void handleRegistrationTimeout() {
   Serial.println("RFID registration timed out.");
   resetRegistrationWindow();
   lastStatus = "TIMEOUT";
+
+  // NEW: update LEDs and OLED on timeout
+  updateIndicatorsForStatus();
 }
 
 bool readCardUid(String &uidOut) {
@@ -153,9 +197,56 @@ bool readCardUid(String &uidOut) {
   return true;
 }
 
+void deleteUser(const String &uid) {
+  if (WiFi.status() != WL_CONNECTED) {
+    lastStatus = "DELETE_WIFI_ERR";
+    showMsg("Delete error", "WiFi");
+    return;
+  }
+
+  HTTPClient http;
+  String url = String("http://192.168.2.11:5000/user/") + uid;
+
+  http.begin(url);
+  int code = http.sendRequest("DELETE");
+  String resp = http.getString();
+  http.end();
+
+  if (code == 200) {
+    lastStatus = "DELETE_OK";
+    showMsg("Deleted:", uid);
+  } else if (code == 404) {
+    lastStatus = "DELETE_NOTFOUND";
+    showMsg("Delete failed", "UID not found");
+  } else {
+    lastStatus = "DELETE_FAIL";
+    showMsg("Delete error", "HTTP " + String(code));
+  }
+}
+
+
 void handleCardUid(const String &uid) {
   lastUid = uid;
   lastEventMillis = millis();
+
+
+  // NEW: delete mode handling
+  if (deleteModeArmed) {
+    deleteModeArmed = false;
+    lastStatus = "DELETE_ATTEMPT";
+    deleteUser(uid);
+    updateIndicatorsForStatus();
+    return;
+  } else if (lastStatus == "DELETE_OK") {
+    showMsg("Card deleted", "UID: " + lastUid);
+    setLeds(true, false, 1500);
+  } else if (lastStatus == "DELETE_FAIL" || lastStatus == "DELETE_NOTFOUND" || lastStatus == "DELETE_WIFI_ERR") {
+    showMsg("Delete error", lastStatus);
+    setLeds(false, true, 1500);
+  } else if (lastStatus == "DELETE_ATTEMPT") {
+    showMsg("Deleting...", "UID: " + lastUid);
+    setLeds(false, false, 0);
+  }
 
   if (waitingForRFID && millis() <= rfidTimeout) {
     Serial.println("RFID in REGISTRATION window, sending to backend...");
@@ -167,7 +258,123 @@ void handleCardUid(const String &uid) {
     checkAccessRFID(uid);  // normal access check
     lookupUserByUid(uid);  // extra: update login suggestion
   }
+
+  // NEW: update LEDs and OLED after any RFID event
+  updateIndicatorsForStatus();
 }
+
+// =============================
+// NEW: OLED and LED helpers
+// =============================
+
+// Simple OLED print helper, also logs to Serial
+void showMsg(const String &l1, const String &l2, const String &l3, bool serial) {
+  String serialLine = l1;
+  if (l2.length()) serialLine += " " + l2;
+  if (l3.length()) serialLine += " " + l3;
+
+  if (serial) {
+    Serial.println(serialLine);
+  }
+
+  if (!displayOk) {
+    return;
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println(l1);
+  if (l2.length()) display.println(l2);
+  if (l3.length()) display.println(l3);
+  display.display();
+}
+
+// LED control with timeout
+void setLeds(bool greenOn, bool redOn, unsigned long durationMs) {
+  digitalWrite(LED_GREEN, greenOn ? HIGH : LOW);
+  digitalWrite(LED_RED, redOn ? HIGH : LOW);
+  if (durationMs > 0) {
+    ledOffMillis = millis() + durationMs;
+  } else {
+    ledOffMillis = 0;
+  }
+}
+
+// Turn LEDs off after timeout
+void handleLedTimeout() {
+  if (ledOffMillis != 0 && millis() > ledOffMillis) {
+    digitalWrite(LED_GREEN, LOW);
+    digitalWrite(LED_RED, LOW);
+    ledOffMillis = 0;
+  }
+}
+
+// Map lastStatus + lastUid to LEDs and OLED messages
+void updateIndicatorsForStatus() {
+  // status is used as-is from existing logic, only adds side effects
+
+  if (lastStatus == "ACCESS_OK") {
+    showMsg("Access granted", "UID: " + lastUid);
+    setLeds(true, false, 1500);
+  } else if (lastStatus == "ACCESS_DENIED" || lastStatus == "ACCESS_FORBIDDEN") {
+    showMsg("Access denied", "UID: " + lastUid);
+    setLeds(false, true, 1500);
+  } else if (lastStatus == "ACCESS_WIFI_ERR" || lastStatus == "ACCESS_HTTP_ERR" || lastStatus == "ACCESS_FAIL") {
+    showMsg("Access error", lastStatus);
+    setLeds(false, true, 1500);
+  } else if (lastStatus == "REG_WAIT") {
+    showMsg("Registration", "User: " + tempUsername, "Tap card...");
+    setLeds(false, false, 0);
+  } else if (lastStatus == "REG_OK") {
+    showMsg("Registration OK", "UID: " + lastUid);
+    setLeds(true, false, 1500);
+  } else if (lastStatus == "REG_FAIL" || lastStatus == "REG_ERR_NOPARAM" || lastStatus == "REG_WIFI_ERR") {
+    showMsg("Registration error", lastStatus);
+    setLeds(false, true, 1500);
+  } else if (lastStatus == "TIMEOUT") {
+    showMsg("Registration timed out");
+    setLeds(false, true, 1500);
+  } else if (lastStatus == "ACCESS_ATTEMPT" || lastStatus == "REG_ATTEMPT") {
+    showMsg("Processing...", "UID: " + lastUid);
+    setLeds(false, false, 0);
+  }
+}
+
+// Simple touch handler: short press shows current status on OLED
+void handleTouch() {
+  int current = digitalRead(TOUCH_PIN);
+
+  if (lastTouchState == LOW && current == HIGH) {
+    unsigned long now = millis();
+
+    if (now - touchLastTime < 600) {
+      touchPressCount++;
+    } else {
+      touchPressCount = 1;
+    }
+
+    touchLastTime = now;
+
+    // Two presses = ARM DELETE MODE
+    if (touchPressCount == 2) {
+      deleteModeArmed = true;
+      showMsg("Delete mode", "Tap card to delete");
+      touchPressCount = 0;
+      lastTouchState = current;
+      return;
+    }
+
+    // Normal behavior for single touch
+    String l2 = "Status: " + (lastStatus.length() ? lastStatus : String("NONE"));
+    String l3 = lastUid.length() ? "UID: " + lastUid : "";
+    showMsg("Touch detected", l2, l3);
+  }
+
+  lastTouchState = current;
+}
+
 
 // ---------------------------
 // Home page HTML
@@ -532,7 +739,7 @@ String buildStatusPageHtml() {
     html += "<h3>Last stats JSON</h3><pre>" + lastStatsRawJson + "</pre>";
   }
 
- if (lastStatsRawJson.length()) {
+  if (lastStatsRawJson.length()) {
     html += "<h3>Last stats JSON</h3><pre>" + lastStatsRawJson + "</pre>";
   }
 
@@ -545,7 +752,6 @@ String buildStatusPageHtml() {
     "</body></html>";
 
   return html;
-
 }
 
 // ---------------------------
@@ -582,6 +788,9 @@ void setupRoutes() {
     waitingForRFID = true;
     rfidTimeout = millis() + 15000;  // 15s window, adjust if needed
     lastStatus = "REG_WAIT";
+
+    // NEW: reflect registration wait on OLED/LEDs
+    updateIndicatorsForStatus();
 
     String msg = "Registration started.\n\n"
                  "User: "
@@ -686,6 +895,23 @@ void setupRoutes() {
 void setup() {
   Serial.begin(115200);
 
+  // NEW: init LEDs and touch
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(TOUCH_PIN, INPUT);
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_GREEN, LOW);
+
+  // NEW: init OLED
+  Wire.begin(OLED_SDA, OLED_SCL);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+    Serial.println("SSD1306 init failed");
+    displayOk = false;
+  } else {
+    displayOk = true;
+    showMsg("ESP32 Access", "Room " + roomID, "Initializing...");
+  }
+
   SPI.begin();
   rfid.PCD_Init();
 
@@ -699,12 +925,18 @@ void setup() {
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
 
+  if (displayOk) {
+    showMsg("ESP32 Access", "IP: " + WiFi.localIP().toString(), "Room " + roomID);
+  }
+
   setupRoutes();
   server.begin();
 }
 
 void loop() {
   handleRegistrationTimeout();
+  handleTouch();       // NEW: touch sensor handling
+  handleLedTimeout();  // NEW: auto turn off LEDs
 
   String uid;
   if (!readCardUid(uid)) {
