@@ -921,6 +921,7 @@ void setup() {
 
   SPI.begin();
   rfid.PCD_Init();
+  rfid.PCD_DumpVersionToSerial();
 
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
@@ -960,12 +961,15 @@ void loop() {
 
   if (!waitingForRFID && millis() - lastEventMillis > 2000) {
     showMsg("ESP32 Access", "Room " + String(roomID));
+    lastEventMillis = millis();  // <-- throttle to every 2 s
   }
+
 
   String uid;
   if (!readCardUid(uid)) {
     if (millis() - lastRead > 5000) {
       Serial.println("No new card.");
+      lastRead = millis();  // <-- update here to limit spam
     }
     return;
   }
