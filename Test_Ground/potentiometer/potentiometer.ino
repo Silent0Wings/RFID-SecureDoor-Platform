@@ -13,7 +13,7 @@ float floatMap(float x, float in_min, float in_max, float out_min, float out_max
 // the setup routine runs once when you press reset:
 void setup() {
   // initialize serial communication at 9600 bits per second:
-  Serial.begin(9600);
+  Serial.begin(115200);
   // set the ADC attenuation to 11 dB (up to ~3.3V input)
   analogSetAttenuation(ADC_11db);
 }
@@ -23,7 +23,7 @@ void loop() {
   // read the input on analog pin GPIO36:
   int analogValue = analogRead(27);
   // Rescale to potentiometer's voltage (from 0V to 3.3V):
-  float voltage = floatMap(analogValue, 0, 4095, 0, 3.3);
+  float voltage = (int)floatMap(analogValue, 0, 4095, 100, 110);
 
   // print out the value you read:
   Serial.print("Analog: ");

@@ -289,20 +289,44 @@ app.post("/register", async (req, res) => {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  // UID + room pair uniqueness
-  const exists = users.find(
-    (u) => String(u.uid) === String(uid) && String(u.roomID) === String(roomID)
-  );
-  if (exists) {
-    return res
-      .status(409)
-      .json({ error: "User with this UID for room already exists" });
-  }
-
   if (!worksheet) {
     return res.status(500).json({ error: "Worksheet not available" });
   }
 
+  // Check if UID already exists
+  const existing = users.find((u) => String(u.uid) === String(uid));
+
+  // --------------------------------------------
+  // CASE 1: UID already exists → append roomID
+  // --------------------------------------------
+  if (existing) {
+    const currentRooms = parseAllowedRooms(existing.roomID);
+
+    // Do not duplicate the room
+    if (!currentRooms.includes(String(roomID))) {
+      currentRooms.push(String(roomID));
+    }
+
+    const newRoomString = currentRooms.join("|");
+
+    // Update Excel row
+    const row = worksheet.getRow(existing.rowNumber);
+    row.getCell(5).value = newRoomString;
+    row.commit();
+
+    await workbook.xlsx.writeFile(filePath);
+    await loadUsers();
+
+    return res.json({
+      message: "Room appended to existing UID",
+      uid: uid,
+      rooms: newRoomString,
+    });
+  }
+
+  // --------------------------------------------
+  // CASE 2: UID does not exist → create new row
+  // --------------------------------------------
   const rowIdx = worksheet.lastRow ? worksheet.lastRow.number + 1 : 2;
   const row = worksheet.getRow(rowIdx);
   row.getCell(1).value = user;
@@ -310,13 +334,13 @@ app.post("/register", async (req, res) => {
   row.getCell(3).value = uid;
   row.getCell(4).value = 0; // counter
   row.getCell(5).value = roomID;
-  row.getCell(6).value = "TRUE"; // access flag
+  row.getCell(6).value = "TRUE";
   row.commit();
 
   await workbook.xlsx.writeFile(filePath);
   await loadUsers();
 
-  return res.json({ message: "Registration successful" });
+  return res.json({ message: "Registration successful (new UID)" });
 });
 
 // Bootstrap

@@ -79,6 +79,7 @@
 #define LED_GREEN 12
 
 #define TOUCH_PIN 14
+#define POT_PIN 37  // potentiometer analog pin
 
 #define OLED_SDA 4
 #define OLED_SCL 15
@@ -95,7 +96,7 @@ const char *password = "17D2A27F3E14";
 const char *registerUrl = "http://192.168.2.11:5000/register";  // POST user/pass/uid/roomID
 const char *accessBaseUrl = "http://192.168.2.11:5000/user";    // GET uid/roomID
 const char *statsUrl = "http://192.168.2.11:5000/stats";        // GET user/password
-const String roomID = "101";
+String roomID = "101";                                          // will be updated from potentiometer
 
 // =============================
 // RFID and server objects
@@ -360,10 +361,11 @@ void handleTouch() {
       return;
     }
 
-    // Normal behavior for single touch
+    // Normal behavior for single touch - show current room
+    String l1 = "Room: " + roomID;
     String l2 = "Status: " + (lastStatus.length() ? lastStatus : String("NONE"));
     String l3 = lastUid.length() ? "UID: " + lastUid : "";
-    showMsg("Touch detected", l2, l3);
+    showMsg(l1, l2, l3);
   }
 
   lastTouchState = current;
@@ -883,6 +885,14 @@ void setupRoutes() {
 }
 
 
+// ---------------------------
+// hELPER
+// ---------------------------
+float floatMap(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+
 
 
 // ---------------------------
@@ -890,6 +900,7 @@ void setupRoutes() {
 // ---------------------------
 void setup() {
   Serial.begin(115200);
+  analogSetAttenuation(ADC_11db);  // for full 0-3.3V range on ADC
 
   // NEW: init LEDs and touch
   pinMode(LED_RED, OUTPUT);
@@ -930,13 +941,29 @@ void setup() {
 }
 
 void loop() {
+  int analogValue = analogRead(POT_PIN);  // 0..4095
+
+  // Map analog input to room numbers 100..110
+  int roomNum = (int)floatMap(analogValue, 0, 4095, 100, 110);
+  roomID = roomNum;
+
+  static int lastRoom = -1;
+  if (roomNum != lastRoom) {
+    lastRoom = roomNum;
+    lastEventMillis = millis();
+    showMsg("ESP32 Access", "Room " + String(roomID));
+  }
+
   handleRegistrationTimeout();
-  handleTouch();       // NEW: touch sensor handling
-  handleLedTimeout();  // NEW: auto turn off LEDs
+  handleTouch();
+  handleLedTimeout();
+
+  if (!waitingForRFID && millis() - lastEventMillis > 2000) {
+    showMsg("ESP32 Access", "Room " + String(roomID));
+  }
 
   String uid;
   if (!readCardUid(uid)) {
-    // suppress spam for 1 second after a read
     if (millis() - lastRead > 5000) {
       Serial.println("No new card.");
     }
@@ -944,9 +971,7 @@ void loop() {
   }
 
   lastRead = millis();
-
   Serial.print("Card detected UID: ");
   Serial.println(uid);
-
   handleCardUid(uid);
 }
