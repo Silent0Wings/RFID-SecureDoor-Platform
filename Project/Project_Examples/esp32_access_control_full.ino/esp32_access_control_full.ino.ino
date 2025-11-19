@@ -75,8 +75,9 @@
 // =============================
 // New hardware pins (LEDs, OLED, touch)
 // =============================
-#define LED_RED 13
-#define LED_GREEN 12
+#define LED_RED 27
+#define LED_GREEN 13
+#define LED_BLUE 12
 
 #define TOUCH_PIN 14
 #define POT_PIN 37  // potentiometer analog pin
@@ -88,15 +89,21 @@
 #define SCREEN_HEIGHT 64
 #define OLED_ADDR 0x3C
 
+
+// RGB pin definitions for analogWrite logic
+const int redPin = LED_RED;
+const int greenPin = LED_GREEN;
+const int bluePin = LED_BLUE;
+
 // =============================
 // WiFi and backend
 // =============================
-const char *ssid = "BELL009";
-const char *password = "17D2A27F3E14";
-const char *registerUrl = "http://192.168.2.11:5000/register";  // POST user/pass/uid/roomID
-const char *accessBaseUrl = "http://192.168.2.11:5000/user";    // GET uid/roomID
-const char *statsUrl = "http://192.168.2.11:5000/stats";        // GET user/password
-String roomID = "101";                                          // will be updated from potentiometer
+const char *ssid = "SM-Yahya";
+const char *password = "ya1234ya";
+const char *registerUrl = "http://172.28.219.124:5000/register";  // POST user/pass/uid/roomID
+const char *accessBaseUrl = "http://172.28.219.124:5000/user";    // GET uid/roomID
+const char *statsUrl = "http://172.28.219.124:5000/stats";        // GET user/password
+String roomID = "101";                                            // will be updated from potentiometer
 
 // =============================
 // RFID and server objects
@@ -156,6 +163,8 @@ void updateIndicatorsForStatus();
 void handleTouch();
 void handleLedTimeout();
 void showMsg(const String &l1, const String &l2 = "", const String &l3 = "", bool serial = true);
+void setColor(int redValue, int greenValue, int blueValue);
+
 
 // ---------------------------
 // Helpers
@@ -165,6 +174,8 @@ void resetRegistrationWindow() {
   tempUsername = "";
   tempPassword = "";
 }
+
+
 
 void handleRegistrationTimeout() {
   if (!waitingForRFID) return;
@@ -207,7 +218,7 @@ void deleteUser(const String &uid) {
   }
 
   HTTPClient http;
-  String url = String("http://192.168.2.11:5000/user/") + uid;
+  String url = String("http://172.28.219.124:5000/user/") + uid;
 
   http.begin(url);
   int code = http.sendRequest("DELETE");
@@ -286,56 +297,105 @@ void showMsg(const String &l1, const String &l2, const String &l3, bool serial) 
   display.display();
 }
 
-// LED control with timeout
-void setLeds(bool greenOn, bool redOn, unsigned long durationMs) {
-  digitalWrite(LED_GREEN, greenOn ? HIGH : LOW);
-  digitalWrite(LED_RED, redOn ? HIGH : LOW);
-  if (durationMs > 0) {
-    ledOffMillis = millis() + durationMs;
-  } else {
-    ledOffMillis = 0;
-  }
+// Function to set the RGB color using PWM
+void setColor(int redValue, int greenValue, int blueValue) {
+  // PWM analogWrite values for each color
+  analogWrite(redPin, redValue);
+  analogWrite(greenPin, greenValue);
+  analogWrite(bluePin, blueValue);
 }
 
 // Turn LEDs off after timeout
 void handleLedTimeout() {
   if (ledOffMillis != 0 && millis() > ledOffMillis) {
-    digitalWrite(LED_GREEN, LOW);
-    digitalWrite(LED_RED, LOW);
+    setColor(0, 0, 0);  // all off
     ledOffMillis = 0;
   }
 }
 
-// Map lastStatus + lastUid to LEDs and OLED messages
+// Map lastStatus + lastUid to RGB colors and OLED messages
 void updateIndicatorsForStatus() {
-  // status is used as-is from existing logic, only adds side effects
 
+  // ===== ACCESS SUCCESS =====
   if (lastStatus == "ACCESS_OK") {
     showMsg("Access granted", "UID: " + lastUid);
-    setLeds(true, false, 1500);
-  } else if (lastStatus == "ACCESS_DENIED" || lastStatus == "ACCESS_FORBIDDEN") {
+    setColor(0, 255, 0);  // GREEN
+    ledOffMillis = millis() + 1500;
+  }
+
+  // ===== ACCESS DENIED =====
+  else if (lastStatus == "ACCESS_DENIED" || lastStatus == "ACCESS_FORBIDDEN") {
     showMsg("Access denied", "UID: " + lastUid);
-    setLeds(false, true, 1500);
-  } else if (lastStatus == "ACCESS_WIFI_ERR" || lastStatus == "ACCESS_HTTP_ERR" || lastStatus == "ACCESS_FAIL") {
+    setColor(255, 0, 0);  // RED
+    ledOffMillis = millis() + 1500;
+  }
+
+  // ===== WIFI / HTTP FAILURE =====
+  else if (lastStatus == "ACCESS_WIFI_ERR" || lastStatus == "ACCESS_HTTP_ERR" || lastStatus == "ACCESS_FAIL") {
     showMsg("Access error", lastStatus);
-    setLeds(false, true, 1500);
-  } else if (lastStatus == "REG_WAIT") {
+    setColor(255, 0, 255);  // MAGENTA = error
+    ledOffMillis = millis() + 1500;
+  }
+
+  // ===== WAITING FOR CARD DURING REG =====
+  else if (lastStatus == "REG_WAIT") {
     showMsg("Registration", "User: " + tempUsername, "Tap card...");
-    setLeds(false, false, 0);
-  } else if (lastStatus == "REG_OK") {
+    setColor(0, 0, 255);  // BLUE = waiting
+    ledOffMillis = 0;     // stays on
+  }
+
+  // ===== REGISTRATION SUCCESS =====
+  else if (lastStatus == "REG_OK") {
     showMsg("Registration OK", "UID: " + lastUid);
-    setLeds(true, false, 1500);
-  } else if (lastStatus == "REG_FAIL" || lastStatus == "REG_ERR_NOPARAM" || lastStatus == "REG_WIFI_ERR") {
+    setColor(0, 255, 255);  // CYAN = success
+    ledOffMillis = millis() + 1500;
+  }
+
+  // ===== REGISTRATION FAILURE =====
+  else if (lastStatus == "REG_FAIL" || lastStatus == "REG_ERR_NOPARAM" || lastStatus == "REG_WIFI_ERR") {
     showMsg("Registration error", lastStatus);
-    setLeds(false, true, 1500);
-  } else if (lastStatus == "TIMEOUT") {
+    setColor(255, 165, 0);  // ORANGE = warning
+    ledOffMillis = millis() + 1500;
+  }
+
+  // ===== REGISTRATION TIMEOUT =====
+  else if (lastStatus == "TIMEOUT") {
     showMsg("Registration timed out");
-    setLeds(false, true, 1500);
-  } else if (lastStatus == "ACCESS_ATTEMPT" || lastStatus == "REG_ATTEMPT") {
+    setColor(150, 0, 150);  // PURPLE
+    ledOffMillis = millis() + 1500;
+  }
+
+  // ===== PROCESSING =====
+  else if (lastStatus == "ACCESS_ATTEMPT" || lastStatus == "REG_ATTEMPT") {
     showMsg("Processing...", "UID: " + lastUid);
-    setLeds(false, false, 0);
+    setColor(255, 255, 0);  // YELLOW = processing
+    ledOffMillis = 0;       // stays on
+  } else if (lastStatus == "DELETE_OK") {
+    showMsg("Delete OK", "UID: " + lastUid);
+    setColor(255, 255, 255);
+    ledOffMillis = millis() + 1500;
+  }
+
+  else if (lastStatus == "DELETE_NOTFOUND") {
+    showMsg("Delete failed", "UID not found");
+    setColor(255, 255, 0);
+    ledOffMillis = millis() + 1500;
+  }
+
+  else if (lastStatus == "DELETE_FAIL") {
+    showMsg("Delete error");
+    setColor(0, 255, 200);
+    ledOffMillis = millis() + 1500;
+  }
+
+
+  // ===== DEFAULT / UNKNOWN =====
+  else {
+    setColor(0, 0, 0);  // OFF
+    ledOffMillis = 0;
   }
 }
+
 
 // Simple touch handler: short press shows current status on OLED
 void handleTouch() {
@@ -356,10 +416,16 @@ void handleTouch() {
     if (touchPressCount == 2) {
       deleteModeArmed = true;
       showMsg("Delete mode", "Tap card to delete");
+
+      // LED effect for delete-mode
+setColor(180, 0, 255);  // purple
+      ledOffMillis = 0;     // do not auto turn off
+
       touchPressCount = 0;
       lastTouchState = current;
       return;
     }
+
 
     // Normal behavior for single touch - show current room
     String l1 = "Room: " + roomID;
@@ -466,7 +532,7 @@ void lookupUserByUid(const String &uid) {
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
-  String url = String("http://192.168.2.11:5000/uid-name/") + uid;
+  String url = String("http://172.28.219.124:5000/uid-name/") + uid;
   Serial.print("LOOKUP: GET ");
   Serial.println(url);
 
@@ -601,6 +667,8 @@ void checkAccessRFID(const String &uid) {
   } else if (code == 404) {
     lastStatus = "ACCESS_DENIED";
     lastStatsError = "UID not found";
+    lastLoginSuggestedUser = "";
+
   } else {
     lastStatus = "ACCESS_FAIL";
     lastStatsError = "ACCESS HTTP " + String(code) + " body: " + resp;
@@ -903,11 +971,14 @@ void setup() {
   analogSetAttenuation(ADC_11db);  // for full 0-3.3V range on ADC
 
   // NEW: init LEDs and touch
-  pinMode(LED_RED, OUTPUT);
-  pinMode(LED_GREEN, OUTPUT);
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
   pinMode(TOUCH_PIN, INPUT);
-  digitalWrite(LED_RED, LOW);
-  digitalWrite(LED_GREEN, LOW);
+
+  // start with all LEDs off
+  setColor(0, 0, 0);
+
 
   // NEW: init OLED
   Wire.begin(OLED_SDA, OLED_SCL);
