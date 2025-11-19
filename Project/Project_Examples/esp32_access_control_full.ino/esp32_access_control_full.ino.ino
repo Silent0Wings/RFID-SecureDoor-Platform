@@ -105,6 +105,7 @@ AsyncWebServer server(80);
 
 // NEW: OLED display object
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
+static unsigned long lastRead = 0;
 
 // =============================
 // State
@@ -224,44 +225,37 @@ void deleteUser(const String &uid) {
   }
 }
 
-
 void handleCardUid(const String &uid) {
   lastUid = uid;
   lastEventMillis = millis();
 
-
-  // NEW: delete mode handling
+  // DELETE MODE
   if (deleteModeArmed) {
     deleteModeArmed = false;
     lastStatus = "DELETE_ATTEMPT";
     deleteUser(uid);
     updateIndicatorsForStatus();
     return;
-  } else if (lastStatus == "DELETE_OK") {
-    showMsg("Card deleted", "UID: " + lastUid);
-    setLeds(true, false, 1500);
-  } else if (lastStatus == "DELETE_FAIL" || lastStatus == "DELETE_NOTFOUND" || lastStatus == "DELETE_WIFI_ERR") {
-    showMsg("Delete error", lastStatus);
-    setLeds(false, true, 1500);
-  } else if (lastStatus == "DELETE_ATTEMPT") {
-    showMsg("Deleting...", "UID: " + lastUid);
-    setLeds(false, false, 0);
   }
 
+  // REGISTRATION MODE
   if (waitingForRFID && millis() <= rfidTimeout) {
     Serial.println("RFID in REGISTRATION window, sending to backend...");
     lastStatus = "REG_ATTEMPT";
     tryRegisterRFID(uid);
-  } else {
-    Serial.println("RFID in ACCESS mode, checking permissions...");
-    lastStatus = "ACCESS_ATTEMPT";
-    checkAccessRFID(uid);  // normal access check
-    lookupUserByUid(uid);  // extra: update login suggestion
   }
 
-  // NEW: update LEDs and OLED after any RFID event
+  // ACCESS MODE
+  else {
+    Serial.println("RFID in ACCESS mode, checking permissions...");
+    lastStatus = "ACCESS_ATTEMPT";
+    checkAccessRFID(uid);
+    lookupUserByUid(uid);
+  }
+
   updateIndicatorsForStatus();
 }
+
 
 // =============================
 // NEW: OLED and LED helpers
@@ -374,6 +368,7 @@ void handleTouch() {
 
   lastTouchState = current;
 }
+
 
 
 // ---------------------------
@@ -601,9 +596,10 @@ void checkAccessRFID(const String &uid) {
     Serial.println("ACCESS: 403 forbidden.");
     lastStatus = "ACCESS_FORBIDDEN";
     lastStatsError = "ACCESS 403: " + resp;
+  } else if (code == 404) {
+    lastStatus = "ACCESS_DENIED";
+    lastStatsError = "UID not found";
   } else {
-    Serial.print("ACCESS: unexpected HTTP ");
-    Serial.println(code);
     lastStatus = "ACCESS_FAIL";
     lastStatsError = "ACCESS HTTP " + String(code) + " body: " + resp;
   }
@@ -940,8 +936,14 @@ void loop() {
 
   String uid;
   if (!readCardUid(uid)) {
-    return;  // nothing this iteration
+    // suppress spam for 1 second after a read
+    if (millis() - lastRead > 5000) {
+      Serial.println("No new card.");
+    }
+    return;
   }
+
+  lastRead = millis();
 
   Serial.print("Card detected UID: ");
   Serial.println(uid);
