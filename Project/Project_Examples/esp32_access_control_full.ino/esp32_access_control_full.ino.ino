@@ -960,6 +960,41 @@ float floatMap(float x, float in_min, float in_max, float out_min, float out_max
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
+void verifyRFID() {
+  rfid.PCD_Init();
+  delay(50);
+
+  byte ver = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+
+  Serial.print("MFRC522 Firmware: 0x");
+  Serial.println(ver, HEX);
+
+  if (ver != 0x92) {
+    Serial.println("ERROR: MFRC522 firmware mismatch or reader not connected!");
+
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(0, 0);
+      display.println("RFID ERROR");
+      display.println("Firmware != 0x92");
+      display.println("Actual: 0x" + String(ver, HEX));
+      display.println("System halted");
+      display.display();
+    }
+
+    // FLASH RED FOREVER
+    while (true) {
+      setColor(255, 0, 0);  // RED ON
+      delay(300);
+      setColor(0, 0, 0);  // OFF
+      delay(300);
+    }
+  }
+
+
+  rfid.PCD_DumpVersionToSerial();
+}
 
 
 
@@ -991,8 +1026,7 @@ void setup() {
   }
 
   SPI.begin();
-  rfid.PCD_Init();
-  rfid.PCD_DumpVersionToSerial();
+  verifyRFID();
 
 
 
