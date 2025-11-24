@@ -418,8 +418,8 @@ void handleTouch() {
       showMsg("Delete mode", "Tap card to delete");
 
       // LED effect for delete-mode
-setColor(180, 0, 255);  // purple
-      ledOffMillis = 0;     // do not auto turn off
+      setColor(180, 0, 255);  // purple
+      ledOffMillis = 0;       // do not auto turn off
 
       touchPressCount = 0;
       lastTouchState = current;
@@ -994,6 +994,10 @@ void setup() {
   rfid.PCD_Init();
   rfid.PCD_DumpVersionToSerial();
 
+
+
+
+
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
@@ -1003,6 +1007,18 @@ void setup() {
   Serial.println();
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
+
+  // =============================
+  // mDNS HOSTNAME SUPPORT
+  // =============================
+  if (!MDNS.begin("rfid")) {  // rfid is the hostname
+    Serial.println("mDNS start failed");
+  } else {
+    Serial.println("mDNS responder started: http://rfid.local");
+  }
+
+  // Advertise HTTP service on port 80
+  MDNS.addService("http", "tcp", 80);
 
   if (displayOk) {
     showMsg("ESP32 Access", "IP: " + WiFi.localIP().toString(), "Room " + roomID);
