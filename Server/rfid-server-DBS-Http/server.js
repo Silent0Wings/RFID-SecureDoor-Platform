@@ -141,7 +141,7 @@ function rowToUser(row, rowNumber) {
 }
 
 function normalizeAccess(access) {
-  const s = String(access).toLowerCase();
+  const s = String(access).trim().toLowerCase();
   return s === "true" || s === "yes" || s === "1";
 }
 
@@ -327,6 +327,38 @@ app.get("/stats", (req, res) => {
   return res.status(200).json(userPayload(entry));
 });
 
+async function incrementCounterForUser(user) {
+  if (!worksheet) {
+    console.error("incrementCounterForUser: worksheet is null");
+    return;
+  }
+
+  const row = worksheet.getRow(user.rowNumber);
+  const cell = row.getCell(4);
+
+  const currentValRaw =
+    cell.value == null || cell.value === "" ? 0 : cell.value;
+  const currentValNum = Number(currentValRaw);
+  const newVal = isNaN(currentValNum) ? 1 : currentValNum + 1;
+
+  // update Excel cell
+  cell.value = newVal;
+  row.commit();
+
+  // update in-memory user
+  user.counter = newVal;
+
+  try {
+    await workbook.xlsx.writeFile(filePath);
+    /* console.log(
+      `Counter updated for UID ${user.uid}: ${currentValNum} -> ${newVal}`
+    );
+    */
+  } catch (err) {
+    console.error("incrementCounterForUser: writeFile failed:", err);
+  }
+}
+
 // GET /user/:uid?roomID=101
 app.get("/user/:uid", async (req, res) => {
   if (!users.length) {
@@ -378,11 +410,11 @@ app.get("/user/:uid", async (req, res) => {
     });
   }
 
-  user.counter = Number(user.counter || 0) + 1;
+  // ACCESS GRANTED -> increment counter in Excel for this user only
   try {
-    await saveCounters();
+    await incrementCounterForUser(user);
   } catch (err) {
-    console.error("Failed to save counters:", err);
+    console.error("incrementCounterForUser threw:", err);
   }
 
   if (res.locals._log) {
