@@ -37,6 +37,7 @@
 
 const express = require("express");
 const ExcelJS = require("exceljs");
+const createWebsiteRouter = require("./website");
 
 const app = express();
 const PORT = 5000;
@@ -59,6 +60,9 @@ const logWorkbook = new ExcelJS.Workbook();
 const logFilePath = "logs.xlsx";
 let logSheet = null;
 
+// ----------------------
+// Excel - logs.xlsx helpers
+// ----------------------
 async function initLogSheet() {
   try {
     await logWorkbook.xlsx.readFile(logFilePath);
@@ -125,7 +129,7 @@ async function appendLog(entry) {
 }
 
 // ----------------------
-// Data helpers
+// Data helpers for users.xlsx
 // ----------------------
 function rowToUser(row, rowNumber) {
   const c = (i) => row.getCell(i).value;
@@ -179,7 +183,7 @@ function findUserByUid(uid) {
 }
 
 // ----------------------
-// Excel load/save
+// Excel load/save for users.xlsx
 // ----------------------
 async function loadUsers() {
   users = [];
@@ -232,6 +236,43 @@ async function deleteUserByUid(uid) {
   await loadUsers();
 
   return true;
+}
+
+async function incrementCounterForUser(user) {
+  if (!worksheet) {
+    console.error("incrementCounterForUser: worksheet is null");
+    return;
+  }
+
+  const row = worksheet.getRow(user.rowNumber);
+  const cell = row.getCell(4);
+
+  const currentValRaw =
+    cell.value == null || cell.value === "" ? 0 : cell.value;
+  const currentValNum = Number(currentValRaw);
+  const newVal = isNaN(currentValNum) ? 1 : currentValNum + 1;
+
+  cell.value = newVal;
+  row.commit();
+
+  user.counter = newVal;
+
+  try {
+    await workbook.xlsx.writeFile(filePath);
+  } catch (err) {
+    console.error("incrementCounterForUser: writeFile failed:", err);
+  }
+}
+
+// ----------------------
+// Helpers for website.js
+// ----------------------
+function getUsersForWebsite() {
+  return users;
+}
+
+function getLogSheetForWebsite() {
+  return logSheet;
 }
 
 // ----------------------
@@ -289,7 +330,17 @@ app.use((req, res, next) => {
 });
 
 // ----------------------
-// Routes
+// Mount website router
+// ----------------------
+const websiteRouter = createWebsiteRouter({
+  getUsers: getUsersForWebsite,
+  getLogSheet: getLogSheetForWebsite,
+});
+
+app.use("/", websiteRouter);
+
+// ----------------------
+// API Routes
 // ----------------------
 
 // GET /stats?user=...&password=...
@@ -326,38 +377,6 @@ app.get("/stats", (req, res) => {
 
   return res.status(200).json(userPayload(entry));
 });
-
-async function incrementCounterForUser(user) {
-  if (!worksheet) {
-    console.error("incrementCounterForUser: worksheet is null");
-    return;
-  }
-
-  const row = worksheet.getRow(user.rowNumber);
-  const cell = row.getCell(4);
-
-  const currentValRaw =
-    cell.value == null || cell.value === "" ? 0 : cell.value;
-  const currentValNum = Number(currentValRaw);
-  const newVal = isNaN(currentValNum) ? 1 : currentValNum + 1;
-
-  // update Excel cell
-  cell.value = newVal;
-  row.commit();
-
-  // update in-memory user
-  user.counter = newVal;
-
-  try {
-    await workbook.xlsx.writeFile(filePath);
-    /* console.log(
-      `Counter updated for UID ${user.uid}: ${currentValNum} -> ${newVal}`
-    );
-    */
-  } catch (err) {
-    console.error("incrementCounterForUser: writeFile failed:", err);
-  }
-}
 
 // GET /user/:uid?roomID=101
 app.get("/user/:uid", async (req, res) => {
@@ -410,7 +429,7 @@ app.get("/user/:uid", async (req, res) => {
     });
   }
 
-  // ACCESS GRANTED -> increment counter in Excel for this user only
+  // ACCESS GRANTED - increment counter in Excel for this user only
   try {
     await incrementCounterForUser(user);
   } catch (err) {
@@ -434,11 +453,11 @@ app.get("/", (req, res) => {
   }
   res.json({
     status: "backend ok",
-    routes: ["/stats", "/user/:uid", "/register", "/uid-name/:uid"],
+    routes: ["/stats", "/user/:uid", "/register", "/uid-name/:uid", "/admin"],
   });
 });
 
-// GET /uid-name/:uid - lookup username for a given UID, no access check or counter increment
+// GET /uid-name/:uid
 app.get("/uid-name/:uid", (req, res) => {
   if (!users.length) {
     if (res.locals._log) {
@@ -609,7 +628,7 @@ app.post("/register", async (req, res) => {
 
   const existing = users.find((u) => String(u.uid) === String(uid));
 
-  // CASE 1: UID already exists -> append roomID
+  // CASE 1: UID already exists - append roomID
   if (existing) {
     const currentRooms = parseAllowedRooms(existing.roomID);
 
@@ -640,7 +659,7 @@ app.post("/register", async (req, res) => {
     });
   }
 
-  // CASE 2: UID does not exist -> create new row
+  // CASE 2: UID does not exist - create new row
   const rowIdx = worksheet.lastRow ? worksheet.lastRow.number + 1 : 2;
   const row = worksheet.getRow(rowIdx);
   row.getCell(1).value = user;
