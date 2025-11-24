@@ -1,4 +1,3 @@
-// server.js
 /*
   server.js - Excel-backed access control backend
 
@@ -29,6 +28,11 @@
 
   Persistence:
   - saveCounters() writes updated counter values back to the Excel worksheet.
+
+  Logging (logs.xlsx):
+  - Every HTTP request is appended to logs.xlsx.
+  - Columns: Timestamp, Protocol, Method, Route, Status, Result, User, UID, RoomID, Message, IP.
+  - Logs what protocol was used, what action was done, what status was returned, plus user/UID/room info when available.
 */
 
 const express = require("express");
@@ -40,10 +44,85 @@ const PORT = 5000;
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
+// ----------------------
+// Users workbook (users.xlsx)
+// ----------------------
 const workbook = new ExcelJS.Workbook();
 const filePath = "users.xlsx";
 let worksheet = null;
 let users = [];
+
+// ----------------------
+// Logging workbook (logs.xlsx)
+// ----------------------
+const logWorkbook = new ExcelJS.Workbook();
+const logFilePath = "logs.xlsx";
+let logSheet = null;
+
+async function initLogSheet() {
+  try {
+    await logWorkbook.xlsx.readFile(logFilePath);
+    logSheet = logWorkbook.worksheets[0];
+    if (!logSheet) {
+      logSheet = logWorkbook.addWorksheet("Logs");
+      logSheet.addRow([
+        "Timestamp",
+        "Protocol",
+        "Method",
+        "Route",
+        "Status",
+        "Result",
+        "User",
+        "UID",
+        "RoomID",
+        "Message",
+        "IP",
+      ]);
+      await logWorkbook.xlsx.writeFile(logFilePath);
+    }
+  } catch (err) {
+    logSheet = logWorkbook.addWorksheet("Logs");
+    logSheet.addRow([
+      "Timestamp",
+      "Protocol",
+      "Method",
+      "Route",
+      "Status",
+      "Result",
+      "User",
+      "UID",
+      "RoomID",
+      "Message",
+      "IP",
+    ]);
+    await logWorkbook.xlsx.writeFile(logFilePath);
+  }
+}
+
+async function appendLog(entry) {
+  if (!logSheet) return;
+
+  const row = logSheet.addRow([
+    entry.timestamp,
+    entry.protocol,
+    entry.method,
+    entry.route,
+    entry.status,
+    entry.result,
+    entry.user || "",
+    entry.uid || "",
+    entry.roomID || "",
+    entry.message || "",
+    entry.ip || "",
+  ]);
+  row.commit();
+
+  try {
+    await logWorkbook.xlsx.writeFile(logFilePath);
+  } catch (err) {
+    console.error("Failed to write logs.xlsx:", err);
+  }
+}
 
 // ----------------------
 // Data helpers
@@ -143,21 +222,71 @@ async function deleteUserByUid(uid) {
   const target = users.find((u) => String(u.uid) === String(uid));
   if (!target) return false;
 
-  // Clear the row cells (remove the user from Excel)
   const row = worksheet.getRow(target.rowNumber);
   for (let i = 1; i <= 6; i++) {
     row.getCell(i).value = null;
   }
   row.commit();
 
-  // Save file
   await workbook.xlsx.writeFile(filePath);
-
-  // Reload the in-memory users array
   await loadUsers();
 
   return true;
 }
+
+// ----------------------
+// Logging middleware
+// ----------------------
+app.use((req, res, next) => {
+  const ip =
+    req.headers["x-forwarded-for"] ||
+    req.ip ||
+    (req.socket && req.socket.remoteAddress) ||
+    "";
+
+  res.locals._log = {
+    protocol: (req.protocol || "http").toUpperCase(),
+    method: req.method,
+    route: req.originalUrl,
+    user: (req.body && req.body.user) || req.query.user || "",
+    uid:
+      (req.params && req.params.uid) ||
+      (req.body && req.body.uid) ||
+      req.query.uid ||
+      "",
+    roomID:
+      (req.params && req.params.roomID) ||
+      (req.body && req.body.roomID) ||
+      req.query.roomID ||
+      "",
+    ip: ip,
+    message: "",
+  };
+
+  res.on("finish", () => {
+    const base = res.locals._log || {};
+    const status = res.statusCode;
+    const result = status >= 400 ? "ERROR" : "OK";
+
+    appendLog({
+      timestamp: new Date().toISOString(),
+      protocol: base.protocol || (req.protocol || "http").toUpperCase(),
+      method: base.method || req.method,
+      route: base.route || req.originalUrl,
+      status,
+      result,
+      user: base.user,
+      uid: base.uid,
+      roomID: base.roomID,
+      message: base.message,
+      ip: base.ip,
+    }).catch((err) => {
+      console.error("Failed to append log entry:", err);
+    });
+  });
+
+  next();
+});
 
 // ----------------------
 // Routes
@@ -169,15 +298,30 @@ app.get("/stats", (req, res) => {
   const { user, password } = req.query;
 
   if (!users.length) {
+    if (res.locals._log) {
+      res.locals._log.message = "No user data available for /stats";
+    }
     return res.status(404).json({ error: "No user data available" });
   }
   if (!user || !password) {
+    if (res.locals._log) {
+      res.locals._log.message = "Missing user or password in /stats";
+    }
     return res.status(400).json({ error: "Missing user or password" });
   }
 
   const entry = findUserByCredentials(user, password);
   if (!entry) {
+    if (res.locals._log) {
+      res.locals._log.message = "Invalid credentials in /stats";
+    }
     return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  if (res.locals._log) {
+    res.locals._log.user = entry.user;
+    res.locals._log.uid = entry.uid;
+    res.locals._log.message = "Stats returned for user";
   }
 
   return res.status(200).json(userPayload(entry));
@@ -186,6 +330,9 @@ app.get("/stats", (req, res) => {
 // GET /user/:uid?roomID=101
 app.get("/user/:uid", async (req, res) => {
   if (!users.length) {
+    if (res.locals._log) {
+      res.locals._log.message = "No user data available for /user";
+    }
     return res.status(404).json({ error: "No user data available" });
   }
 
@@ -194,13 +341,21 @@ app.get("/user/:uid", async (req, res) => {
 
   const user = findUserByUid(uid);
   if (!user) {
+    if (res.locals._log) {
+      res.locals._log.message = `UID ${uid} not found in /user`;
+    }
     return res.status(404).json({ error: "UID not found" });
   }
 
   const allowedRooms = parseAllowedRooms(user.roomID);
 
-  // room check
   if (roomID && !allowedRooms.includes(String(roomID))) {
+    if (res.locals._log) {
+      res.locals._log.user = user.user;
+      res.locals._log.uid = user.uid;
+      res.locals._log.roomID = roomID;
+      res.locals._log.message = `Access denied for room ${roomID}`;
+    }
     return res.status(403).json({
       ...userPayload(user, { allowedRooms }),
       access: false,
@@ -210,6 +365,12 @@ app.get("/user/:uid", async (req, res) => {
 
   const hasAccess = normalizeAccess(user.access);
   if (!hasAccess) {
+    if (res.locals._log) {
+      res.locals._log.user = user.user;
+      res.locals._log.uid = user.uid;
+      res.locals._log.roomID = roomID || "";
+      res.locals._log.message = "Access flag is false";
+    }
     return res.status(403).json({
       ...userPayload(user, { allowedRooms }),
       access: false,
@@ -217,35 +378,56 @@ app.get("/user/:uid", async (req, res) => {
     });
   }
 
-  // at this point: ACCESS GRANTED -> increment counter
   user.counter = Number(user.counter || 0) + 1;
   try {
-    await saveCounters(); // write back to Excel
+    await saveCounters();
   } catch (err) {
     console.error("Failed to save counters:", err);
-    // still return success; just log the error
+  }
+
+  if (res.locals._log) {
+    res.locals._log.user = user.user;
+    res.locals._log.uid = user.uid;
+    res.locals._log.roomID = roomID || "";
+    res.locals._log.message = "Access granted and counter incremented";
   }
 
   return res.json(userPayload(user, { allowedRooms }));
 });
 
+// GET /
 app.get("/", (req, res) => {
+  if (res.locals._log) {
+    res.locals._log.message = "Health check";
+  }
   res.json({
     status: "backend ok",
-    routes: ["/stats", "/user/:uid", "/register"],
+    routes: ["/stats", "/user/:uid", "/register", "/uid-name/:uid"],
   });
 });
 
 // GET /uid-name/:uid - lookup username for a given UID, no access check or counter increment
 app.get("/uid-name/:uid", (req, res) => {
   if (!users.length) {
+    if (res.locals._log) {
+      res.locals._log.message = "No user data available for /uid-name";
+    }
     return res.status(404).json({ error: "No user data available" });
   }
 
   const { uid } = req.params;
   const user = findUserByUid(uid);
   if (!user) {
+    if (res.locals._log) {
+      res.locals._log.message = `UID ${uid} not found in /uid-name`;
+    }
     return res.status(404).json({ error: "UID not found" });
+  }
+
+  if (res.locals._log) {
+    res.locals._log.user = user.user;
+    res.locals._log.uid = user.uid;
+    res.locals._log.message = "UID to username lookup success";
   }
 
   return res.json({ user: user.user, uid: user.uid });
@@ -254,6 +436,9 @@ app.get("/uid-name/:uid", (req, res) => {
 // DELETE /user/:uid
 app.delete("/user/:uid", async (req, res) => {
   if (!users.length) {
+    if (res.locals._log) {
+      res.locals._log.message = "No user data available for DELETE /user";
+    }
     return res.status(404).json({ error: "No user data available" });
   }
 
@@ -261,13 +446,25 @@ app.delete("/user/:uid", async (req, res) => {
   const found = users.find((u) => String(u.uid) === String(uid));
 
   if (!found) {
+    if (res.locals._log) {
+      res.locals._log.message = `UID ${uid} not found in DELETE /user`;
+    }
     return res.status(404).json({ error: "UID not found" });
   }
 
   try {
     const ok = await deleteUserByUid(uid);
     if (!ok) {
+      if (res.locals._log) {
+        res.locals._log.message = "Failed to delete user from Excel";
+      }
       return res.status(500).json({ error: "Failed to delete user" });
+    }
+
+    if (res.locals._log) {
+      res.locals._log.user = found.user;
+      res.locals._log.uid = uid;
+      res.locals._log.message = "User deleted";
     }
 
     return res.json({
@@ -276,21 +473,30 @@ app.delete("/user/:uid", async (req, res) => {
       user: found.user,
     });
   } catch (err) {
+    if (res.locals._log) {
+      res.locals._log.message = "Delete operation threw error";
+    }
     return res
       .status(500)
       .json({ error: "Delete operation failed", details: err.message });
   }
 });
 
-// DELETE A ROOM FROM A USER (SAFE AND UNIQUE ROUTE)
+// DELETE /room/:uid/:roomID
 app.delete("/room/:uid/:roomID", async (req, res) => {
   if (!users.length) {
+    if (res.locals._log) {
+      res.locals._log.message = "No user data available for DELETE /room";
+    }
     return res.status(404).json({ error: "No user data available" });
   }
 
   const { uid, roomID } = req.params;
   const user = findUserByUid(uid);
   if (!user) {
+    if (res.locals._log) {
+      res.locals._log.message = `UID ${uid} not found in DELETE /room`;
+    }
     return res.status(404).json({ error: "UID not found" });
   }
 
@@ -298,13 +504,29 @@ app.delete("/room/:uid/:roomID", async (req, res) => {
   const newRooms = currentRooms.filter((r) => r !== String(roomID));
 
   if (newRooms.length === currentRooms.length) {
+    if (res.locals._log) {
+      res.locals._log.user = user.user;
+      res.locals._log.uid = user.uid;
+      res.locals._log.roomID = roomID;
+      res.locals._log.message = "Room not found for this user";
+    }
     return res.status(400).json({ error: "Room not found for this user" });
   }
 
   if (newRooms.length === 0) {
     const ok = await deleteUserByUid(uid);
     if (!ok) {
+      if (res.locals._log) {
+        res.locals._log.message =
+          "Failed to delete user after last room removed";
+      }
       return res.status(500).json({ error: "Failed to delete user" });
+    }
+    if (res.locals._log) {
+      res.locals._log.user = user.user;
+      res.locals._log.uid = uid;
+      res.locals._log.roomID = roomID;
+      res.locals._log.message = "User deleted because no rooms remain";
     }
     return res.json({
       message: "User deleted because no rooms remain",
@@ -321,6 +543,13 @@ app.delete("/room/:uid/:roomID", async (req, res) => {
   await workbook.xlsx.writeFile(filePath);
   await loadUsers();
 
+  if (res.locals._log) {
+    res.locals._log.user = user.user;
+    res.locals._log.uid = uid;
+    res.locals._log.roomID = roomID;
+    res.locals._log.message = "Room removed from user";
+  }
+
   return res.json({
     message: "Room removed",
     uid,
@@ -333,36 +562,44 @@ app.delete("/room/:uid/:roomID", async (req, res) => {
 app.post("/register", async (req, res) => {
   const { user, password, uid, roomID } = req.body;
   if (!user || !password || !uid || !roomID) {
+    if (res.locals._log) {
+      res.locals._log.message = "Missing required fields in /register";
+    }
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   if (!worksheet) {
+    if (res.locals._log) {
+      res.locals._log.message = "Worksheet not available in /register";
+    }
     return res.status(500).json({ error: "Worksheet not available" });
   }
 
-  // Check if UID already exists
   const existing = users.find((u) => String(u.uid) === String(uid));
 
-  // --------------------------------------------
-  // CASE 1: UID already exists → append roomID
-  // --------------------------------------------
+  // CASE 1: UID already exists -> append roomID
   if (existing) {
     const currentRooms = parseAllowedRooms(existing.roomID);
 
-    // Do not duplicate the room
     if (!currentRooms.includes(String(roomID))) {
       currentRooms.push(String(roomID));
     }
 
     const newRoomString = currentRooms.join("|");
 
-    // Update Excel row
     const row = worksheet.getRow(existing.rowNumber);
     row.getCell(5).value = newRoomString;
     row.commit();
 
     await workbook.xlsx.writeFile(filePath);
     await loadUsers();
+
+    if (res.locals._log) {
+      res.locals._log.user = existing.user;
+      res.locals._log.uid = existing.uid;
+      res.locals._log.roomID = roomID;
+      res.locals._log.message = "Room appended to existing UID";
+    }
 
     return res.json({
       message: "Room appended to existing UID",
@@ -371,9 +608,7 @@ app.post("/register", async (req, res) => {
     });
   }
 
-  // --------------------------------------------
-  // CASE 2: UID does not exist → create new row
-  // --------------------------------------------
+  // CASE 2: UID does not exist -> create new row
   const rowIdx = worksheet.lastRow ? worksheet.lastRow.number + 1 : 2;
   const row = worksheet.getRow(rowIdx);
   row.getCell(1).value = user;
@@ -387,16 +622,25 @@ app.post("/register", async (req, res) => {
   await workbook.xlsx.writeFile(filePath);
   await loadUsers();
 
+  if (res.locals._log) {
+    res.locals._log.user = user;
+    res.locals._log.uid = uid;
+    res.locals._log.roomID = roomID;
+    res.locals._log.message = "Registration successful for new UID";
+  }
+
   return res.json({ message: "Registration successful (new UID)" });
 });
 
+// ----------------------
 // Bootstrap
-loadUsers()
+// ----------------------
+Promise.all([loadUsers(), initLogSheet()])
   .then(() => {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error("Failed to load Excel file:", err);
+    console.error("Failed to initialize:", err);
   });
