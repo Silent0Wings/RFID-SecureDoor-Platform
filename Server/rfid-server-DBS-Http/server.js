@@ -282,6 +282,53 @@ app.delete("/user/:uid", async (req, res) => {
   }
 });
 
+// DELETE A ROOM FROM A USER (SAFE AND UNIQUE ROUTE)
+app.delete("/room/:uid/:roomID", async (req, res) => {
+  if (!users.length) {
+    return res.status(404).json({ error: "No user data available" });
+  }
+
+  const { uid, roomID } = req.params;
+  const user = findUserByUid(uid);
+  if (!user) {
+    return res.status(404).json({ error: "UID not found" });
+  }
+
+  const currentRooms = parseAllowedRooms(user.roomID);
+  const newRooms = currentRooms.filter((r) => r !== String(roomID));
+
+  if (newRooms.length === currentRooms.length) {
+    return res.status(400).json({ error: "Room not found for this user" });
+  }
+
+  if (newRooms.length === 0) {
+    const ok = await deleteUserByUid(uid);
+    if (!ok) {
+      return res.status(500).json({ error: "Failed to delete user" });
+    }
+    return res.json({
+      message: "User deleted because no rooms remain",
+      uid,
+      removedRoom: roomID,
+    });
+  }
+
+  const newRoomString = newRooms.join("|");
+
+  const row = worksheet.getRow(user.rowNumber);
+  row.getCell(5).value = newRoomString;
+  row.commit();
+  await workbook.xlsx.writeFile(filePath);
+  await loadUsers();
+
+  return res.json({
+    message: "Room removed",
+    uid,
+    removedRoom: roomID,
+    rooms: newRoomString,
+  });
+});
+
 // POST /register
 app.post("/register", async (req, res) => {
   const { user, password, uid, roomID } = req.body;

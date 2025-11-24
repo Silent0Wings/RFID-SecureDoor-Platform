@@ -126,7 +126,10 @@ unsigned long rfidTimeout = 0;
 // ---------------------------
 // Delete touch sensor
 // ---------------------------
-bool deleteModeArmed = false;
+// Delete touch sensor
+bool deleteModeArmed = false;       // full user delete (3+ touches)
+bool deleteRoomModeArmed = false;   // room delete (2 touches)
+String deleteRoomPendingRoom = "";  // room to delete when card is scanned
 unsigned long touchLastTime = 0;
 int touchPressCount = 0;
 
@@ -210,6 +213,7 @@ bool readCardUid(String &uidOut) {
   return true;
 }
 
+
 void deleteUser(const String &uid) {
   if (WiFi.status() != WL_CONNECTED) {
     lastStatus = "DELETE_WIFI_ERR";
@@ -237,15 +241,77 @@ void deleteUser(const String &uid) {
   }
 }
 
+void deleteRoomForUid(const String &uid, const String &room) {
+  Serial.print("DELETE ROOM CALL uid=[");
+  Serial.print(uid);
+  Serial.print("] room=[");
+  Serial.print(room);
+  Serial.println("]");
+
+  if (uid.isEmpty()) {
+    lastStatus = "DELETE_FAIL";
+    showMsg("Delete error", "No UID");
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    lastStatus = "DELETE_WIFI_ERR";
+    showMsg("Delete error", "WiFi");
+    return;
+  }
+
+  // FIXED: define URL FIRST
+  String url = "http://172.28.219.124:5000/room/" + uid + "/" + room;
+
+  Serial.print("DELETE URL: ");
+  Serial.println(url);
+
+  HTTPClient http;
+  http.begin(url);
+  int code = http.sendRequest("DELETE");
+  String resp = http.getString();
+  http.end();
+
+  Serial.print("DELETE HTTP code: ");
+  Serial.println(code);
+  Serial.print("DELETE resp: ");
+  Serial.println(resp);
+
+  if (code == 200) {
+    lastStatus = "DELETE_OK";
+    showMsg("Room removed", "UID: " + uid, "Room " + room);
+  } else if (code == 400) {
+    lastStatus = "DELETE_NOTFOUND";
+    showMsg("Delete failed", "Room not found");
+  } else if (code == 404) {
+    lastStatus = "DELETE_NOTFOUND";
+    showMsg("Delete failed", "UID not found");
+  } else {
+    lastStatus = "DELETE_FAIL";
+    showMsg("Delete error", "HTTP " + String(code));
+  }
+}
+
+
+
 void handleCardUid(const String &uid) {
   lastUid = uid;
   lastEventMillis = millis();
 
-  // DELETE MODE
+  // FULL USER DELETE (3+ touches)
   if (deleteModeArmed) {
     deleteModeArmed = false;
     lastStatus = "DELETE_ATTEMPT";
     deleteUser(uid);
+    updateIndicatorsForStatus();
+    return;
+  }
+
+  // ROOM DELETE (2 touches)
+  if (deleteRoomModeArmed) {
+    deleteRoomModeArmed = false;
+    lastStatus = "DELETE_ATTEMPT";
+    deleteRoomForUid(uid, deleteRoomPendingRoom);
     updateIndicatorsForStatus();
     return;
   }
@@ -256,7 +322,6 @@ void handleCardUid(const String &uid) {
     lastStatus = "REG_ATTEMPT";
     tryRegisterRFID(uid);
   }
-
   // ACCESS MODE
   else {
     Serial.println("RFID in ACCESS mode, checking permissions...");
@@ -400,44 +465,61 @@ void updateIndicatorsForStatus() {
 // Simple touch handler: short press shows current status on OLED
 void handleTouch() {
   int current = digitalRead(TOUCH_PIN);
+  unsigned long now = millis();
 
+  // Resolve tap sequence after gap
+  if (touchPressCount > 0 && (now - touchLastTime) > 600) {
+    int count = touchPressCount;
+    touchPressCount = 0;
+
+    // 1 touch: show status + BLUE
+    if (count == 1) {
+      String l1 = "Room: " + roomID;
+      String l2 = "Status: " + (lastStatus.length() ? lastStatus : String("NONE"));
+      String l3 = lastUid.length() ? "UID: " + lastUid : "";
+      showMsg(l1, l2, l3);
+
+      setColor(0, 0, 255);            // blue = status view
+      ledOffMillis = millis() + 800;  // auto off after debug
+    }
+    // 2 touches: delete current room for last UID + YELLOW
+    else if (count == 2) {
+      if (roomID.length() == 0) {
+        showMsg("Delete room", "Invalid room");
+        setColor(255, 0, 0);
+        ledOffMillis = millis() + 800;
+        return;
+      }
+
+      deleteRoomModeArmed = true;
+      deleteRoomPendingRoom = roomID;
+
+      showMsg("Delete room", "Room " + deleteRoomPendingRoom, "Tap card");
+      setColor(255, 255, 0);  // yellow = room delete armed
+      ledOffMillis = 0;       // keep on until action
+    }
+    // 3+ touches: arm delete mode (old 2-touch behavior) + PURPLE
+    else if (count >= 3) {
+      deleteModeArmed = true;
+      showMsg("Delete mode", "Tap card to delete");
+
+      setColor(180, 0, 255);  // purple = armed delete
+      ledOffMillis = 0;
+    }
+  }
+
+  // Edge detect touch
   if (lastTouchState == LOW && current == HIGH) {
-    unsigned long now = millis();
-
     if (now - touchLastTime < 600) {
       touchPressCount++;
     } else {
       touchPressCount = 1;
     }
-
     touchLastTime = now;
-
-    // Two presses = ARM DELETE MODE
-    if (touchPressCount == 2) {
-      deleteModeArmed = true;
-      showMsg("Delete mode", "Tap card to delete");
-
-      // LED effect for delete-mode
-      setColor(180, 0, 255);  // purple
-      ledOffMillis = 0;       // do not auto turn off
-
-      touchPressCount = 0;
-      lastTouchState = current;
-      return;
-    }
-
-
-    // Normal behavior for single touch - show current room
-    String l1 = "Room: " + roomID;
-    String l2 = "Status: " + (lastStatus.length() ? lastStatus : String("NONE"));
-    String l3 = lastUid.length() ? "UID: " + lastUid : "";
-    showMsg(l1, l2, l3);
   }
 
   lastTouchState = current;
 }
-
-
 
 // ---------------------------
 // Home page HTML
@@ -969,32 +1051,38 @@ void verifyRFID() {
   Serial.print("MFRC522 Firmware: 0x");
   Serial.println(ver, HEX);
 
-  if (ver != 0x92) {
-    Serial.println("ERROR: MFRC522 firmware mismatch or reader not connected!");
+  // Accept 0x92 (official) and 0xB2 (clone)
+  if (ver != 0x92 && ver != 0xB2) {
+    Serial.println("ERROR: Unknown MFRC522 firmware or reader not connected!");
 
     if (displayOk) {
       display.clearDisplay();
       display.setTextSize(1);
       display.setCursor(0, 0);
       display.println("RFID ERROR");
-      display.println("Firmware != 0x92");
-      display.println("Actual: 0x" + String(ver, HEX));
-      display.println("System halted");
+      display.println("Unknown firmware");
+      display.print("Found: 0x");
+      display.println(ver, HEX);
       display.display();
     }
 
-    // FLASH RED FOREVER
+    // Flash red forever
     while (true) {
-      setColor(255, 0, 0);  // RED ON
+      setColor(255, 0, 0);
       delay(300);
-      setColor(0, 0, 0);  // OFF
+      setColor(0, 0, 0);
       delay(300);
     }
   }
 
+  // Optional: warn if using clone 0xB2
+  if (ver == 0xB2) {
+    Serial.println("WARNING: Clone MFRC522 detected (0xB2). UID reading OK, other functions may fail.");
+  }
 
   rfid.PCD_DumpVersionToSerial();
 }
+
 
 
 
