@@ -2,6 +2,8 @@
 #define OLED_SDA 21
 #define OLED_SCL 22
 
+//for version 1.0
+
 void setup() {
   Serial.begin(115200);
   Wire.begin(OLED_SDA, OLED_SCL);
