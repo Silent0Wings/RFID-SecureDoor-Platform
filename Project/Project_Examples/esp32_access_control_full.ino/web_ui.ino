@@ -19,25 +19,201 @@ extern String statsUrl;
 extern String extractJsonField(const String &src, const char *key);
 
 static const char MAIN_CSS[] PROGMEM = R"rawliteral(
-/* ... (CSS content identical to original, omitted for brevity) ... */
-/* Assume standard CSS here */
-body { background: #0e0e10; color: #e6e6e6; font-family: sans-serif; padding: 20px; }
-.card { background: #1a1a1d; padding: 20px; border-radius: 8px; max-width: 600px; margin: auto; }
-button { padding: 10px; width: 100%; background: #b06fff; border: none; font-weight: bold; cursor: pointer; }
-input { width: 100%; padding: 10px; margin-bottom: 10px; background: #101014; color: white; border: 1px solid #444; }
-.error { color: #ff4c4c; text-align: center; }
+/* Global dark theme */
+body {
+  background: #0e0e10;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #e6e6e6;
+  margin: 0;
+  padding: 40px;
+}
+
+/* Card container (used for all pages) */
+.card {
+  max-width: 600px;
+  margin: auto;
+  background: #1a1a1d;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(128, 0, 255, 0.35);
+}
+
+/* Headings */
+h1,
+h2 {
+  text-align: center;
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #c084fc;
+}
+
+/* Links */
+a {
+  color: #c084fc;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Menu buttons on home page */
+a.button {
+  display: block;
+  margin: 0.5rem 0;
+  padding: 10px 16px;
+  border-radius: 6px;
+  border: 1px solid #8b5cf6;
+  background: #1a1a1d;
+  color: #e6e6e6;
+  text-decoration: none;
+  text-align: center;
+  transition: 0.2s;
+}
+
+a.button:hover {
+  background: #2a1546;
+}
+
+/* Forms */
+label {
+  font-weight: bold;
+  display: block;
+  margin-bottom: 5px;
+}
+
+input[type=text],
+input[type=password] {
+  width: 100%;
+  padding: 10px;
+  background: #101014;
+  color: #eee;
+  border: 1px solid #3b2d4a;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  box-sizing: border-box;
+  transition: 0.2s;
+}
+
+input[type=text]:focus,
+input[type=password]:focus {
+  outline: none;
+  border-color: #b06fff;
+  box-shadow: 0 0 6px #b06fff;
+}
+
+/* Buttons */
+button {
+  width: 100%;
+  padding: 10px;
+  background: #b06fff;
+  border: none;
+  color: #000;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+button:hover {
+  background: #d3a6ff;
+}
+
+/* General helpers */
+.links {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.msg {
+  margin-top: 0.5rem;
+  white-space: pre-wrap;
+}
+
+/* Dashboard wrapper and tables */
+.wrapper {
+  max-width: 1200px;
+  margin: auto;
+  background: #1a1a1d;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(128, 0, 255, 0.35);
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  width: 100%;
+  margin-top: 20px;
+}
+
+/* Data table */
+.data-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.data-table th {
+  background: #8b5cf6;
+  color: #ffffff;
+  padding: 10px;
+  white-space: nowrap;
+  border-bottom: 2px solid #b694ff;
+}
+
+.data-table td {
+  background: #151518;
+  padding: 10px;
+  border-bottom: 1px solid #2b2b2e;
+  transition: 0.2s;
+}
+
+/* Hover effect */
+.data-table tr:hover td {
+  background: #2a1546;
+  box-shadow: inset 0 0 10px rgba(176, 111, 255, 0.4);
+}
+
+.empty {
+  padding: 10px;
+  color: #777;
+}
+
+/* Error message */
+.error {
+  text-align: center;
+  margin-bottom: 10px;
+  color: #ff4c4c;
+}
+
+/* Preformatted JSON block */
+pre {
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+  background: #101014;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #2b2b2e;
+}
 )rawliteral";
 
 static const char LOGIN_JS[] PROGMEM = R"awljs(
 (function(){
   function updateHint(){
-    fetch('/login-hint').then(r=>r.ok?r.json():null).then(d=>{
-        if(d&&d.user){var i=document.querySelector('input[name="user"]');if(i&&!i.value)i.value=d.user;}
-      }).catch(e=>{});
+    fetch('/login-hint')
+      .then(function(r){ if(!r.ok) return null; return r.json(); })
+      .then(function(d){
+        if(!d || !d.user) return;
+        var inp = document.querySelector('input[name="user"]');
+        if(inp && !inp.value){ inp.value = d.user; }
+      })
+      .catch(function(e){});
   }
   setInterval(updateHint, 1000);
 })();
 )awljs";
+
 
 String buildHomePageHtml() {
   String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>";
