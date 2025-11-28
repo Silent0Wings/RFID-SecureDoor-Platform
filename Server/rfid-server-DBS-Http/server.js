@@ -35,6 +35,7 @@
   - Logs what protocol was used, what action was done, what status was returned, plus user/UID/room info when available.
 */
 
+// http://localhost:5000/admin
 const express = require("express");
 const ExcelJS = require("exceljs");
 const createWebsiteRouter = require("./website");
@@ -44,6 +45,12 @@ const PORT = 5000;
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+
+app.set("view engine", "ejs");
+app.set("views", __dirname + "/views");
+
+app.use(express.static(__dirname + "/public"));
+
 
 // ----------------------
 // Users workbook (users.xlsx)

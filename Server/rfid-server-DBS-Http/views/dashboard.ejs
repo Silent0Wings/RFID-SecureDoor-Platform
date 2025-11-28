@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+
+  <body>
+    <div class="wrapper">
+      <h1>Admin Dashboard</h1>
+
+      <h2>Users (users.xlsx)</h2>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Password</th>
+              <th>UID</th>
+              <th>Counter</th>
+              <th>RoomID</th>
+              <th>Access</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% users.forEach(u => { %>
+            <tr>
+              <td><%= u.user %></td>
+              <td><%= u.password %></td>
+              <td><%= u.uid %></td>
+              <td><%= u.counter %></td>
+              <td><%= u.roomID %></td>
+              <td><%= u.access %></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Logs (logs.xlsx)</h2>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <% logHeader.forEach(h => { %>
+              <th><%= h %></th>
+              <% }) %>
+            </tr>
+          </thead>
+
+          <tbody>
+            <% logs.forEach(row => { %>
+            <tr>
+              <% row.forEach(col => { %>
+              <td><%= col %></td>
+              <% }) %>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </body>
+</html>

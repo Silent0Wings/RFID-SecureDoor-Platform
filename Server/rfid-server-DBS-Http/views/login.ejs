@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Admin Login</title>
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+
+  <body class="login-body">
+    <div class="login-card">
+      <h1 class="login-title">Admin Login</h1>
+
+      <% if (error) { %>
+      <p class="login-error"><%= error %></p>
+      <% } %>
+
+      <form action="/admin" method="POST" class="login-form">
+        <label>Email</label>
+        <input
+          type="email"
+          name="email"
+          required
+          class="login-input"
+          placeholder="example@domain.com" />
+
+        <label>Password</label>
+        <input
+          type="password"
+          name="password"
+          required
+          class="login-input"
+          placeholder="••••••••" />
+
+        <button type="submit" class="login-btn">Login</button>
+      </form>
+    </div>
+  </body>
+</html>
