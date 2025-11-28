@@ -4,11 +4,30 @@
 // Uses globals defined in main.ino:
 // - display, displayOk
 // - redPin, greenPin, bluePin
-// - roomID, lastUid, lastStatus
+// - roomID, lastUid, lastStatus, lastStatusCode
 // - tempUsername
 // - deleteModeArmed, deleteRoomModeArmed, deleteRoomPendingRoom
 // - touchPressCount, touchLastTime, lastTouchState
 // - ledOffMillis
+// - LED_SHORT_MS, LED_NORMAL_MS, TOUCH_MULTI_PRESS_WINDOW_MS
+
+// Externs for color constants defined in main.ino
+extern const RgbColor COLOR_OFF;
+extern const RgbColor COLOR_ACCESS_OK;
+extern const RgbColor COLOR_ACCESS_DENIED;
+extern const RgbColor COLOR_ACCESS_ERROR;
+extern const RgbColor COLOR_REG_WAIT;
+extern const RgbColor COLOR_REG_OK;
+extern const RgbColor COLOR_REG_ERROR;
+extern const RgbColor COLOR_TIMEOUT;
+extern const RgbColor COLOR_PROCESSING;
+extern const RgbColor COLOR_DELETE_OK;
+extern const RgbColor COLOR_DELETE_NOTFOUND;
+extern const RgbColor COLOR_DELETE_ERROR;
+extern const RgbColor COLOR_TOUCH_INFO;
+extern const RgbColor COLOR_DELETE_ROOM_ERR;
+extern const RgbColor COLOR_DELETE_ROOM;
+extern const RgbColor COLOR_DELETE_MODE;
 
 void showMsg(const String &l1, const String &l2, const String &l3, bool serial) {
   String serialLine = l1;
@@ -39,61 +58,99 @@ void setColor(int redValue, int greenValue, int blueValue) {
   analogWrite(bluePin, blueValue);
 }
 
+// Overload using named RGB colors
+void setColor(const RgbColor &c) {
+  setColor(c.r, c.g, c.b);
+}
+
 void handleLedTimeout() {
   if (ledOffMillis != 0 && millis() > ledOffMillis) {
-    setColor(0, 0, 0);
+    setColor(COLOR_OFF);
     ledOffMillis = 0;
   }
 }
 
 void updateIndicatorsForStatus() {
-  if (lastStatus == "ACCESS_OK") {
-    showMsg("Access granted", "UID: " + lastUid);
-    setColor(0, 255, 0);
-    ledOffMillis = millis() + 1500;
-  } else if (lastStatus == "ACCESS_DENIED" || lastStatus == "ACCESS_FORBIDDEN") {
-    showMsg("Access denied", "UID: " + lastUid);
-    setColor(255, 0, 0);
-    ledOffMillis = millis() + 1500;
-  } else if (lastStatus == "ACCESS_WIFI_ERR" || lastStatus == "ACCESS_HTTP_ERR" || lastStatus == "ACCESS_FAIL") {
-    showMsg("Access error", lastStatus);
-    setColor(255, 0, 255);
-    ledOffMillis = millis() + 1500;
-  } else if (lastStatus == "REG_WAIT") {
-    showMsg("Registration", "User: " + tempUsername, "Tap card...");
-    setColor(0, 0, 255);
-    ledOffMillis = 0;
-  } else if (lastStatus == "REG_OK") {
-    showMsg("Registration OK", "UID: " + lastUid);
-    setColor(0, 255, 255);
-    ledOffMillis = millis() + 1500;
-  } else if (lastStatus == "REG_FAIL" || lastStatus == "REG_ERR_NOPARAM" || lastStatus == "REG_WIFI_ERR") {
-    showMsg("Registration error", lastStatus);
-    setColor(255, 165, 0);
-    ledOffMillis = millis() + 1500;
-  } else if (lastStatus == "TIMEOUT") {
-    showMsg("Registration timed out");
-    setColor(150, 0, 150);
-    ledOffMillis = millis() + 1500;
-  } else if (lastStatus == "ACCESS_ATTEMPT" || lastStatus == "REG_ATTEMPT") {
-    showMsg("Processing...", "UID: " + lastUid);
-    setColor(255, 255, 0);
-    ledOffMillis = 0;
-  } else if (lastStatus == "DELETE_OK") {
-    showMsg("Delete OK", "UID: " + lastUid);
-    setColor(255, 255, 255);
-    ledOffMillis = millis() + 1500;
-  } else if (lastStatus == "DELETE_NOTFOUND") {
-    showMsg("Delete failed", "UID not found");
-    setColor(255, 255, 0);
-    ledOffMillis = millis() + 1500;
-  } else if (lastStatus == "DELETE_FAIL") {
-    showMsg("Delete error");
-    setColor(0, 255, 200);
-    ledOffMillis = millis() + 1500;
-  } else {
-    setColor(0, 0, 0);
-    ledOffMillis = 0;
+  switch (lastStatusCode) {
+    case StatusCode::AccessOk:
+      showMsg("Access granted", "UID: " + lastUid);
+      setColor(COLOR_ACCESS_OK);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::AccessDenied:
+    case StatusCode::AccessForbidden:
+      showMsg("Access denied", "UID: " + lastUid);
+      setColor(COLOR_ACCESS_DENIED);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::AccessWifiErr:
+    case StatusCode::AccessHttpErr:
+    case StatusCode::AccessFail:
+      showMsg("Access error", lastStatus);
+      setColor(COLOR_ACCESS_ERROR);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::RegWait:
+      showMsg("Registration", "User: " + tempUsername, "Tap card...");
+      setColor(COLOR_REG_WAIT);
+      ledOffMillis = 0;
+      break;
+
+    case StatusCode::RegOk:
+      showMsg("Registration OK", "UID: " + lastUid);
+      setColor(COLOR_REG_OK);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::RegFail:
+    case StatusCode::RegErrNoParam:
+    case StatusCode::RegWifiErr:
+      showMsg("Registration error", lastStatus);
+      setColor(COLOR_REG_ERROR);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::Timeout:
+      showMsg("Registration timed out");
+      setColor(COLOR_TIMEOUT);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::AccessAttempt:
+    case StatusCode::RegAttempt:
+      showMsg("Processing...", "UID: " + lastUid);
+      setColor(COLOR_PROCESSING);
+      ledOffMillis = 0;
+      break;
+
+    case StatusCode::DeleteOk:
+      showMsg("Delete OK", "UID: " + lastUid);
+      setColor(COLOR_DELETE_OK);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::DeleteNotFound:
+      showMsg("Delete failed", "UID not found");
+      setColor(COLOR_DELETE_NOTFOUND);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::DeleteFail:
+    case StatusCode::DeleteWifiErr:
+      showMsg("Delete error");
+      setColor(COLOR_DELETE_ERROR);
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
+
+    case StatusCode::DeleteAttempt:
+    case StatusCode::None:
+    default:
+      setColor(COLOR_OFF);
+      ledOffMillis = 0;
+      break;
   }
 }
 
@@ -101,7 +158,8 @@ void handleTouch() {
   int current = digitalRead(TOUCH_PIN);
   unsigned long now = millis();
 
-  if (touchPressCount > 0 && (now - touchLastTime) > 600) {
+  // End of multi-press window
+  if (touchPressCount > 0 && (now - touchLastTime) > TOUCH_MULTI_PRESS_WINDOW_MS) {
     int count = touchPressCount;
     touchPressCount = 0;
 
@@ -111,13 +169,13 @@ void handleTouch() {
       String l3 = lastUid.length() ? "UID: " + lastUid : "";
       showMsg(l1, l2, l3);
 
-      setColor(0, 0, 255);
-      ledOffMillis = millis() + 800;
+      setColor(COLOR_TOUCH_INFO);
+      ledOffMillis = millis() + LED_SHORT_MS;
     } else if (count == 2) {
       if (roomID.length() == 0) {
         showMsg("Delete room", "Invalid room");
-        setColor(255, 0, 0);
-        ledOffMillis = millis() + 800;
+        setColor(COLOR_DELETE_ROOM_ERR);
+        ledOffMillis = millis() + LED_SHORT_MS;
         return;
       }
 
@@ -125,19 +183,20 @@ void handleTouch() {
       deleteRoomPendingRoom = roomID;
 
       showMsg("Delete room", "Room " + deleteRoomPendingRoom, "Tap card");
-      setColor(255, 255, 0);
+      setColor(COLOR_DELETE_ROOM);
       ledOffMillis = 0;
     } else if (count >= 3) {
       deleteModeArmed = true;
       showMsg("Delete mode", "Tap card to delete");
 
-      setColor(180, 0, 255);
+      setColor(COLOR_DELETE_MODE);
       ledOffMillis = 0;
     }
   }
 
+  // Rising edge detection on touch input
   if (lastTouchState == LOW && current == HIGH) {
-    if (now - touchLastTime < 600) {
+    if (now - touchLastTime < TOUCH_MULTI_PRESS_WINDOW_MS) {
       touchPressCount++;
     } else {
       touchPressCount = 1;

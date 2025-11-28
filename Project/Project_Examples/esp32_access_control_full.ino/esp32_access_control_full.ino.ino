@@ -89,6 +89,114 @@
 #define SCREEN_HEIGHT 64
 #define OLED_ADDR 0x3C
 
+
+// =============================
+// RGB color struct + named colors
+// =============================
+struct RgbColor {
+  int r;
+  int g;
+  int b;
+};
+
+const RgbColor COLOR_OFF = { 0, 0, 0 };
+const RgbColor COLOR_ACCESS_OK = { 0, 255, 0 };
+const RgbColor COLOR_ACCESS_DENIED = { 255, 0, 0 };
+const RgbColor COLOR_ACCESS_ERROR = { 255, 0, 255 };
+const RgbColor COLOR_REG_WAIT = { 0, 0, 255 };
+const RgbColor COLOR_REG_OK = { 0, 255, 255 };
+const RgbColor COLOR_REG_ERROR = { 255, 165, 0 };
+const RgbColor COLOR_TIMEOUT = { 150, 0, 150 };
+const RgbColor COLOR_PROCESSING = { 255, 255, 0 };
+const RgbColor COLOR_DELETE_OK = { 255, 255, 255 };
+const RgbColor COLOR_DELETE_NOTFOUND = { 255, 255, 0 };
+const RgbColor COLOR_DELETE_ERROR = { 0, 255, 200 };
+const RgbColor COLOR_TOUCH_INFO = { 0, 0, 255 };
+const RgbColor COLOR_DELETE_ROOM_ERR = { 255, 0, 0 };
+const RgbColor COLOR_DELETE_ROOM = { 255, 255, 0 };
+const RgbColor COLOR_DELETE_MODE = { 180, 0, 255 };
+
+
+// =============================
+// Status codes
+// =============================
+enum class StatusCode : uint8_t {
+  None,
+
+  RegAttempt,
+  RegWait,
+  RegOk,
+  RegFail,
+  RegErrNoParam,
+  RegWifiErr,
+
+  AccessAttempt,
+  AccessOk,
+  AccessDenied,
+  AccessForbidden,
+  AccessWifiErr,
+  AccessHttpErr,
+  AccessFail,
+
+  Timeout,
+
+  DeleteAttempt,
+  DeleteOk,
+  DeleteNotFound,
+  DeleteFail,
+  DeleteWifiErr
+};
+
+// =============================
+// Timing constants (ms)
+// =============================
+constexpr unsigned long REGISTER_TIMEOUT_MS = 15000;
+constexpr unsigned long STATUS_IDLE_REFRESH_MS = 2000;
+constexpr unsigned long NO_CARD_LOG_INTERVAL_MS = 5000;
+constexpr unsigned long TOUCH_MULTI_PRESS_WINDOW_MS = 600;
+constexpr unsigned long LED_SHORT_MS = 800;
+constexpr unsigned long LED_NORMAL_MS = 1500;
+
+// Global status: enum + human-readable text
+StatusCode lastStatusCode = StatusCode::None;
+String lastStatus = "NONE";  // used only for UI/logging
+
+const char *statusCodeToText(StatusCode s) {
+  switch (s) {
+    case StatusCode::None: return "NONE";
+
+    case StatusCode::RegAttempt: return "REG_ATTEMPT";
+    case StatusCode::RegWait: return "REG_WAIT";
+    case StatusCode::RegOk: return "REG_OK";
+    case StatusCode::RegFail: return "REG_FAIL";
+    case StatusCode::RegErrNoParam: return "REG_ERR_NOPARAM";
+    case StatusCode::RegWifiErr: return "REG_WIFI_ERR";
+
+    case StatusCode::AccessAttempt: return "ACCESS_ATTEMPT";
+    case StatusCode::AccessOk: return "ACCESS_OK";
+    case StatusCode::AccessDenied: return "ACCESS_DENIED";
+    case StatusCode::AccessForbidden: return "ACCESS_FORBIDDEN";
+    case StatusCode::AccessWifiErr: return "ACCESS_WIFI_ERR";
+    case StatusCode::AccessHttpErr: return "ACCESS_HTTP_ERR";
+    case StatusCode::AccessFail: return "ACCESS_FAIL";
+
+    case StatusCode::Timeout: return "TIMEOUT";
+
+    case StatusCode::DeleteAttempt: return "DELETE_ATTEMPT";
+    case StatusCode::DeleteOk: return "DELETE_OK";
+    case StatusCode::DeleteNotFound: return "DELETE_NOTFOUND";
+    case StatusCode::DeleteFail: return "DELETE_FAIL";
+    case StatusCode::DeleteWifiErr: return "DELETE_WIFI_ERR";
+  }
+  return "UNKNOWN";
+}
+
+// Single point to update both enum and text
+void setStatus(StatusCode code) {
+  lastStatusCode = code;
+  lastStatus = statusCodeToText(code);
+}
+
 // RGB pin definitions for analogWrite logic
 const int redPin = LED_RED;
 const int greenPin = LED_GREEN;
@@ -99,6 +207,8 @@ const int bluePin = LED_BLUE;
 // =============================
 const char *ssid = "SM-Yahya";
 const char *password = "ya1234ya";
+
+constexpr const char *BACKEND_BASE = "http://172.28.219.124:5000";
 const char *registerUrl = "http://172.28.219.124:5000/register";  // POST user/pass/uid/roomID
 const char *accessBaseUrl = "http://172.28.219.124:5000/user";    // GET uid/roomID
 const char *statsUrl = "http://172.28.219.124:5000/stats";        // GET user/password
@@ -131,7 +241,6 @@ int touchPressCount = 0;
 
 // Global status for web pages
 String lastUid = "";
-String lastStatus = "";  // "REG_ATTEMPT", "ACCESS_OK", "ACCESS_DENIED", "TIMEOUT", etc.
 unsigned long lastEventMillis = 0;
 
 int lastStatsHttpCode = 0;
@@ -193,7 +302,7 @@ void handleRegistrationTimeout() {
 
   Serial.println("RFID registration timed out.");
   resetRegistrationWindow();
-  lastStatus = "TIMEOUT";
+  setStatus(StatusCode::Timeout);
 
   updateIndicatorsForStatus();
 }
@@ -226,7 +335,7 @@ void handleCardUid(const String &uid) {
   // FULL USER DELETE (3+ touches)
   if (deleteModeArmed) {
     deleteModeArmed = false;
-    lastStatus = "DELETE_ATTEMPT";
+    setStatus(StatusCode::DeleteAttempt);
     deleteUser(uid);
     updateIndicatorsForStatus();
     return;
@@ -235,7 +344,7 @@ void handleCardUid(const String &uid) {
   // ROOM DELETE (2 touches)
   if (deleteRoomModeArmed) {
     deleteRoomModeArmed = false;
-    lastStatus = "DELETE_ATTEMPT";
+    setStatus(StatusCode::DeleteAttempt);
     deleteRoomForUid(uid, deleteRoomPendingRoom);
     updateIndicatorsForStatus();
     return;
@@ -244,13 +353,13 @@ void handleCardUid(const String &uid) {
   // REGISTRATION MODE
   if (waitingForRFID && millis() <= rfidTimeout) {
     Serial.println("RFID in REGISTRATION window, sending to backend...");
-    lastStatus = "REG_ATTEMPT";
+    setStatus(StatusCode::RegAttempt);
     tryRegisterRFID(uid);
   }
   // ACCESS MODE
   else {
     Serial.println("RFID in ACCESS mode, checking permissions...");
-    lastStatus = "ACCESS_ATTEMPT";
+    setStatus(StatusCode::AccessAttempt);
     checkAccessRFID(uid);
     lookupUserByUid(uid);
   }
@@ -372,14 +481,14 @@ void loop() {
   handleTouch();
   handleLedTimeout();
 
-  if (!waitingForRFID && millis() - lastEventMillis > 2000) {
+  if (!waitingForRFID && millis() - lastEventMillis > STATUS_IDLE_REFRESH_MS) {
     showMsg("ESP32 Access", "Room " + String(roomID));
     lastEventMillis = millis();
   }
 
   String uid;
   if (!readCardUid(uid)) {
-    if (millis() - lastRead > 5000) {
+    if (millis() - lastRead > NO_CARD_LOG_INTERVAL_MS) {
       Serial.println("No new card.");
       lastRead = millis();
     }

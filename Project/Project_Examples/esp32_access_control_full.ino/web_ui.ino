@@ -1,6 +1,39 @@
 // web_ui.ino
 // Web UI HTML builders and HTTP route setup
 
+// Shared CSS and JS served as separate resources
+static const char MAIN_CSS[] PROGMEM = R"rawliteral(
+body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:1rem;}
+.card{max-width:600px;margin:0 auto;border:1px solid #ccc;padding:1rem;border-radius:8px;}
+a.button{display:block;margin:0.5rem 0;padding:0.5rem 1rem;border:1px solid #007bff;border-radius:4px;text-decoration:none;color:#007bff;}
+label{display:block;margin-top:0.5rem;}
+input[type=text],input[type=password]{width:100%;padding:0.5rem;margin-top:0.25rem;box-sizing:border-box;}
+button{margin-top:1rem;padding:0.5rem 1rem;width:100%;}
+.msg{margin-top:0.5rem;white-space:pre-wrap;}
+.links{margin-top:1rem;text-align:center;}
+a{text-decoration:none;}
+table{width:100%;border-collapse:collapse;margin-top:0.5rem;}
+th,td{border:1px solid #ccc;padding:0.4rem;text-align:left;font-size:0.9rem;}
+.error{color:#b00020;margin-top:0.5rem;white-space:pre-wrap;word-wrap:break-word;}
+pre{white-space:pre-wrap;font-size:0.8rem;background:#f5f5f5;padding:0.5rem;}
+)rawliteral";
+
+static const char LOGIN_JS[] PROGMEM = R"awljs(
+(function(){
+  function updateHint(){
+    fetch('/login-hint')
+      .then(function(r){ if(!r.ok) return null; return r.json(); })
+      .then(function(d){
+        if(!d || !d.user) return;
+        var inp = document.querySelector('input[name="user"]');
+        if(inp && !inp.value){ inp.value = d.user; }
+      })
+      .catch(function(e){});
+  }
+  setInterval(updateHint, 1000);
+})();
+)awljs";
+
 // ---------------------------
 // Home page HTML
 // ---------------------------
@@ -9,14 +42,7 @@ String buildHomePageHtml() {
   html =
     "<!DOCTYPE html><html><head>"
     "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-    "<style>"
-    "body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:1rem;text-align:center;}"
-    ".card{max-width:480px;margin:0 auto;border:1px solid #ccc;"
-    "padding:1rem;border-radius:8px;}"
-    "a.button{display:block;margin:0.5rem 0;padding:0.5rem 1rem;"
-    "border:1px solid #007bff;border-radius:4px;text-decoration:none;"
-    "color:#007bff;}"
-    "</style>"
+    "<link rel='stylesheet' href='/style.css'>"
     "</head><body>"
     "<div class='card'>"
     "<h2>ESP32 Access Control</h2>"
@@ -35,18 +61,7 @@ String buildRegisterPageHtml(const String &message) {
   html =
     "<!DOCTYPE html><html><head>"
     "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-    "<style>"
-    "body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:1rem;}"
-    ".card{max-width:480px;margin:0 auto;border:1px solid #ccc;"
-    "padding:1rem;border-radius:8px;}"
-    "label{display:block;margin-top:0.5rem;}"
-    "input[type=text],input[type=password]{width:100%;padding:0.5rem;"
-    "margin-top:0.25rem;box-sizing:border-box;}"
-    "button{margin-top:1rem;padding:0.5rem 1rem;width:100%;}"
-    ".msg{margin-top:0.5rem;white-space:pre-wrap;}"
-    ".links{margin-top:1rem;text-align:center;}"
-    "a{text-decoration:none;}"
-    "</style>"
+    "<link rel='stylesheet' href='/style.css'>"
     "</head><body>"
     "<div class='card'>"
     "<h2>Register new card</h2>"
@@ -93,17 +108,8 @@ String buildLoginFormHtml() {
   html =
     "<!DOCTYPE html><html><head>"
     "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-    "<style>"
-    "body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:1rem;}"
-    ".card{max-width:480px;margin:0 auto;border:1px solid #ccc;"
-    "padding:1rem;border-radius:8px;}"
-    "label{display:block;margin-top:0.5rem;}"
-    "input[type=text],input[type=password]{width:100%;padding:0.5rem;"
-    "margin-top:0.25rem;box-sizing:border-box;}"
-    "button{margin-top:1rem;padding:0.5rem 1rem;width:100%;}"
-    ".links{margin-top:1rem;text-align:center;}"
-    "a{text-decoration:none;}"
-    "</style>"
+    "<link rel='stylesheet' href='/style.css'>"
+    "<script src='/login.js' defer></script>"
     "</head><body>"
     "<div class='card'>"
     "<h2>Admin login</h2>"
@@ -114,18 +120,6 @@ String buildLoginFormHtml() {
     "</form>"
     "<div class='links'><a href='/'>Back</a></div>"
     "</div>"
-    "<script>"
-    "setInterval(function(){"
-    "fetch('/login-hint')"
-    ".then(function(r){if(!r.ok) return null; return r.json();})"
-    ".then(function(d){"
-    "if(!d || !d.user) return;"
-    "var inp = document.querySelector('input[name=\"user\"]');"
-    "if(inp && !inp.value){ inp.value = d.user; }"
-    "})"
-    ".catch(function(e){});"
-    "},1000);"
-    "</script>"
     "</body></html>";
   return html;
 }
@@ -135,21 +129,7 @@ String buildLoginResultHtml(const String &tableHtml, const String &errorText) {
   html =
     "<!DOCTYPE html><html><head>"
     "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-    "<style>"
-    "body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:1rem;}"
-    ".card{max-width:480px;margin:0 auto;border:1px solid #ccc;"
-    "padding:1rem;border-radius:8px;}"
-    "h2{margin-top:0;}"
-    ".error{color:#b00020;margin-top:0.5rem;white-space:pre-wrap;"
-    "word-wrap:break-word;}"
-    "table{width:100%;border-collapse:collapse;margin-top:0.5rem;}"
-    "th,td{border:1px solid #ccc;padding:0.4rem;text-align:left;"
-    "font-size:0.9rem;}"
-    ".links{margin-top:1rem;text-align:center;}"
-    "a{text-decoration:none;}"
-    "pre{white-space:pre-wrap;font-size:0.8rem;"
-    "background:#f5f5f5;padding:0.5rem;}"
-    "</style>"
+    "<link rel='stylesheet' href='/style.css'>"
     "</head><body>"
     "<div class='card'>"
     "<h2>My access data</h2>";
@@ -183,17 +163,7 @@ String buildStatusPageHtml() {
   html =
     "<!DOCTYPE html><html><head>"
     "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-    "<style>"
-    "body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:1rem;}"
-    ".card{max-width:600px;margin:0 auto;border:1px solid #ccc;"
-    "padding:1rem;border-radius:8px;}"
-    "table{width:100%;border-collapse:collapse;margin-top:0.5rem;}"
-    "th,td{border:1px solid #ccc;padding:0.4rem;text-align:left;"
-    "font-size:0.9rem;}"
-    "pre{white-space:pre-wrap;font-size:0.8rem;"
-    "background:#f5f5f5;padding:0.5rem;}"
-    ".links{text-align:center;margin-top:1rem;}"
-    "</style>"
+    "<link rel='stylesheet' href='/style.css'>"
     "</head><body>"
     "<div class='card'>"
     "<h2>System status</h2>"
@@ -228,6 +198,15 @@ String buildStatusPageHtml() {
 // Route setup
 // ---------------------------
 void setupRoutes() {
+  // Static assets
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send_P(200, "text/css", MAIN_CSS);
+  });
+
+  server.on("/login.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send_P(200, "application/javascript", LOGIN_JS);
+  });
+
   // HOME
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/html", buildHomePageHtml());
@@ -253,15 +232,17 @@ void setupRoutes() {
     tempPassword = request->getParam("password")->value();
 
     waitingForRFID = true;
-    rfidTimeout = millis() + 15000;
-    lastStatus = "REG_WAIT";
+    rfidTimeout = millis() + REGISTER_TIMEOUT_MS;
+    setStatus(StatusCode::RegWait);
+
+    String msg;
+    msg = "Registration started.\n\n";
+    msg += "User: " + tempUsername + "\n";
+    msg += "Tap the new card on the reader within ";
+    msg += String(REGISTER_TIMEOUT_MS / 1000);
+    msg += " seconds.";
 
     updateIndicatorsForStatus();
-
-    String msg = "Registration started.\n\n"
-                 "User: "
-                 + tempUsername + "\n"
-                                  "Tap the new card on the reader within 15 seconds.";
     request->send(200, "text/html", buildRegisterPageHtml(msg));
   });
 

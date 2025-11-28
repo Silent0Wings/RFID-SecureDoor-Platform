@@ -6,6 +6,11 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
+// from main.ino
+extern StatusCode lastStatusCode;
+extern String lastStatus;
+void setStatus(StatusCode code);
+
 // Globals defined in main.ino
 extern const char *registerUrl;
 extern const char *accessBaseUrl;
@@ -14,7 +19,6 @@ extern String roomID;
 extern String tempUsername;
 extern String tempPassword;
 
-extern String lastStatus;
 extern String lastStatsError;
 extern int lastStatsHttpCode;
 extern String lastStatsRawJson;
@@ -38,13 +42,13 @@ void tryRegisterRFID(const String &uid) {
   // no pending user data
   if (tempUsername.isEmpty() || tempPassword.isEmpty()) {
     Serial.println("REG: Missing username/password for registration.");
-    lastStatus = "REG_ERR_NOPARAM";
+    setStatus(StatusCode::RegErrNoParam);
     return;
   }
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("REG: WiFi not connected.");
-    lastStatus = "REG_WIFI_ERR";
+    setStatus(StatusCode::RegWifiErr);
     lastStatsError = "WiFi not connected";
     return;
   }
@@ -77,12 +81,12 @@ void tryRegisterRFID(const String &uid) {
 
   if (code >= 200 && code < 300) {
     Serial.println("REG: OK from backend.");
-    lastStatus = "REG_OK";
+    setStatus(StatusCode::RegOk);
     lastStatsError = "";
   } else {
     Serial.print("REG: backend error code ");
     Serial.println(code);
-    lastStatus = "REG_FAIL";
+    setStatus(StatusCode::RegFail);
     lastStatsError = "REG HTTP " + String(code) + " body: " + resp;
   }
 
@@ -98,7 +102,7 @@ void tryRegisterRFID(const String &uid) {
 void checkAccessRFID(const String &uid) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("ACCESS: WiFi not connected.");
-    lastStatus = "ACCESS_WIFI_ERR";
+    setStatus(StatusCode::AccessWifiErr);
     lastStatsError = "WiFi not connected";
     return;
   }
@@ -121,7 +125,7 @@ void checkAccessRFID(const String &uid) {
   if (code <= 0) {
     Serial.print("ACCESS: HTTP error ");
     Serial.println(code);
-    lastStatus = "ACCESS_HTTP_ERR";
+    setStatus(StatusCode::AccessHttpErr);
     lastStatsError = "ACCESS HTTP " + String(code);
     return;
   }
@@ -136,25 +140,25 @@ void checkAccessRFID(const String &uid) {
 
     if (hasAccess) {
       Serial.println("ACCESS: granted.");
-      lastStatus = "ACCESS_OK";
+      setStatus(StatusCode::AccessOk);
       lastStatsError = "";
       // TODO: open door, turn green LED, etc
     } else {
       Serial.println("ACCESS: denied by backend payload.");
-      lastStatus = "ACCESS_DENIED";
+      setStatus(StatusCode::AccessDenied);
       lastStatsError = "access field is false";
       // TODO: red LED, buzzer, etc
     }
   } else if (code == 403) {
     Serial.println("ACCESS: 403 forbidden.");
-    lastStatus = "ACCESS_FORBIDDEN";
+    setStatus(StatusCode::AccessForbidden);
     lastStatsError = "ACCESS 403: " + resp;
   } else if (code == 404) {
-    lastStatus = "ACCESS_DENIED";
+    setStatus(StatusCode::AccessDenied);
     lastStatsError = "UID not found";
     lastLoginSuggestedUser = "";
   } else {
-    lastStatus = "ACCESS_FAIL";
+    setStatus(StatusCode::AccessFail);
     lastStatsError = "ACCESS HTTP " + String(code) + " body: " + resp;
   }
 }
@@ -190,7 +194,7 @@ void lookupUserByUid(const String &uid) {
 // ==========================
 void deleteUser(const String &uid) {
   if (WiFi.status() != WL_CONNECTED) {
-    lastStatus = "DELETE_WIFI_ERR";
+    setStatus(StatusCode::DeleteWifiErr);
     showMsg("Delete error", "WiFi", "", true);
     return;
   }
@@ -204,13 +208,13 @@ void deleteUser(const String &uid) {
   http.end();
 
   if (code == 200) {
-    lastStatus = "DELETE_OK";
+    setStatus(StatusCode::DeleteOk);
     showMsg("Deleted:", uid, "", true);
   } else if (code == 404) {
-    lastStatus = "DELETE_NOTFOUND";
+    setStatus(StatusCode::DeleteNotFound);
     showMsg("Delete failed", "UID not found", "", true);
   } else {
-    lastStatus = "DELETE_FAIL";
+    setStatus(StatusCode::DeleteFail);
     showMsg("Delete error", "HTTP " + String(code), "", true);
   }
 }
@@ -226,13 +230,13 @@ void deleteRoomForUid(const String &uid, const String &room) {
   Serial.println("]");
 
   if (uid.isEmpty()) {
-    lastStatus = "DELETE_FAIL";
+    setStatus(StatusCode::DeleteFail);
     showMsg("Delete error", "No UID", "", true);
     return;
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    lastStatus = "DELETE_WIFI_ERR";
+    setStatus(StatusCode::DeleteWifiErr);
     showMsg("Delete error", "WiFi", "", true);
     return;
   }
@@ -254,16 +258,16 @@ void deleteRoomForUid(const String &uid, const String &room) {
   Serial.println(resp);
 
   if (code == 200) {
-    lastStatus = "DELETE_OK";
+    setStatus(StatusCode::DeleteOk);
     showMsg("Room removed", "UID: " + uid, "Room " + room, true);
   } else if (code == 400) {
-    lastStatus = "DELETE_NOTFOUND";
+    setStatus(StatusCode::DeleteNotFound);
     showMsg("Delete failed", "Room not found", "", true);
   } else if (code == 404) {
-    lastStatus = "DELETE_NOTFOUND";
+    setStatus(StatusCode::DeleteNotFound);
     showMsg("Delete failed", "UID not found", "", true);
   } else {
-    lastStatus = "DELETE_FAIL";
+    setStatus(StatusCode::DeleteFail);
     showMsg("Delete error", "HTTP " + String(code), "", true);
   }
 }
