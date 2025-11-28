@@ -1,63 +1,63 @@
-// http_backend.ino
-// ==========================
-// HTTP BACKEND FUNCTIONS
-// ==========================
-
 #include <WiFi.h>
 #include <HTTPClient.h>
 
-// from main.ino
 extern StatusCode lastStatusCode;
 extern String lastStatus;
 void setStatus(StatusCode code);
-
-// Globals defined in main.ino
-extern const char *registerUrl;
-extern const char *accessBaseUrl;
+extern String registerUrl;
+extern String accessBaseUrl;
 extern String roomID;
-
 extern String tempUsername;
 extern String tempPassword;
-
 extern String lastStatsError;
 extern int lastStatsHttpCode;
 extern String lastStatsRawJson;
 extern String lastStatsUser;
 extern unsigned long lastStatsMillis;
-
 extern String lastLoginSuggestedUser;
 extern String lastLoginSuggestedUid;
 
-// Helpers implemented in main.ino
 extern void resetRegistrationWindow();
-extern String extractJsonField(const String &src, const char *key);
 extern void showMsg(const String &l1, const String &l2, const String &l3, bool serial);
+
+// ==========================
+// UTILITY IMPLEMENTATION
+// ==========================
+String extractJsonField(const String &src, const char *key) {
+  String pattern = String("\"") + key + "\"";
+  int p = src.indexOf(pattern);
+  if (p < 0) return "";
+  p = src.indexOf(':', p);
+  if (p < 0) return "";
+  p++;
+  while (p < (int)src.length() && (src[p] == ' ' || src[p] == '\"')) p++;
+  String out;
+  while (p < (int)src.length() && src[p] != '\"' && src[p] != ',' && src[p] != '}') {
+    out += src[p++];
+  }
+  return out;
+}
 
 // ==========================
 // REGISTRATION
 // ==========================
-
-// Registration: called when waitingForRFID == true
 void tryRegisterRFID(const String &uid) {
-  // no pending user data
   if (tempUsername.isEmpty() || tempPassword.isEmpty()) {
-    Serial.println("REG: Missing username/password for registration.");
     setStatus(StatusCode::RegErrNoParam);
     return;
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("REG: WiFi not connected.");
     setStatus(StatusCode::RegWifiErr);
     lastStatsError = "WiFi not connected";
     return;
   }
 
   HTTPClient http;
+  http.setTimeout(2000); // 2s Timeout
   http.begin(registerUrl);
   http.addHeader("Content-Type", "application/json");
 
-  // minimal JSON body
   String body = "{";
   body += "\"user\":\"" + tempUsername + "\",";
   body += "\"password\":\"" + tempPassword + "\",";
@@ -67,8 +67,8 @@ void tryRegisterRFID(const String &uid) {
 
   Serial.print("REG: POST ");
   Serial.println(registerUrl);
-  Serial.print("REG body: ");
-  Serial.println(body);
+  // Security: Do not log body containing password in production
+  Serial.println("REG: Sending data..."); 
 
   int code = http.POST(body);
   String resp = http.getString();
@@ -80,37 +80,29 @@ void tryRegisterRFID(const String &uid) {
   lastStatsUser = tempUsername;
 
   if (code >= 200 && code < 300) {
-    Serial.println("REG: OK from backend.");
     setStatus(StatusCode::RegOk);
     lastStatsError = "";
   } else {
-    Serial.print("REG: backend error code ");
-    Serial.println(code);
     setStatus(StatusCode::RegFail);
     lastStatsError = "REG HTTP " + String(code) + " body: " + resp;
   }
-
-  // registration window is done
   resetRegistrationWindow();
 }
 
 // ==========================
 // ACCESS CHECK
 // ==========================
-
-// Access check: called when waitingForRFID == false
 void checkAccessRFID(const String &uid) {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("ACCESS: WiFi not connected.");
     setStatus(StatusCode::AccessWifiErr);
     lastStatsError = "WiFi not connected";
     return;
   }
 
   HTTPClient http;
+  http.setTimeout(2000); // 2s Timeout
   String url = String(accessBaseUrl) + "/" + uid + "?roomID=" + roomID;
-  Serial.print("ACCESS: GET ");
-  Serial.println(url);
+  Serial.print("ACCESS: GET "); Serial.println(url);
 
   http.begin(url);
   int code = http.GET();
@@ -120,37 +112,27 @@ void checkAccessRFID(const String &uid) {
   lastStatsHttpCode = code;
   lastStatsRawJson = resp;
   lastStatsMillis = millis();
-  lastStatsUser = uid;  // or keep last user if you map uid->user elsewhere
+  lastStatsUser = uid;
 
   if (code <= 0) {
-    Serial.print("ACCESS: HTTP error ");
-    Serial.println(code);
     setStatus(StatusCode::AccessHttpErr);
-    lastStatsError = "ACCESS HTTP " + String(code);
+    lastStatsError = "ACCESS HTTP Error/Timeout";
     return;
   }
 
   if (code == 200) {
-    // backend success, check "access" field
     String accessStr = extractJsonField(resp, "access");
     accessStr.toLowerCase();
-
-    bool hasAccess =
-      accessStr == "true" || accessStr == "yes" || accessStr == "1";
+    bool hasAccess = (accessStr == "true" || accessStr == "yes" || accessStr == "1");
 
     if (hasAccess) {
-      Serial.println("ACCESS: granted.");
       setStatus(StatusCode::AccessOk);
       lastStatsError = "";
-      // TODO: open door, turn green LED, etc
     } else {
-      Serial.println("ACCESS: denied by backend payload.");
       setStatus(StatusCode::AccessDenied);
       lastStatsError = "access field is false";
-      // TODO: red LED, buzzer, etc
     }
   } else if (code == 403) {
-    Serial.println("ACCESS: 403 forbidden.");
     setStatus(StatusCode::AccessForbidden);
     lastStatsError = "ACCESS 403: " + resp;
   } else if (code == 404) {
@@ -159,7 +141,7 @@ void checkAccessRFID(const String &uid) {
     lastLoginSuggestedUser = "";
   } else {
     setStatus(StatusCode::AccessFail);
-    lastStatsError = "ACCESS HTTP " + String(code) + " body: " + resp;
+    lastStatsError = "ACCESS HTTP " + String(code);
   }
 }
 
@@ -170,9 +152,16 @@ void lookupUserByUid(const String &uid) {
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
-  String url = String("http://172.28.219.124:5000/uid-name/") + uid;
-  Serial.print("LOOKUP: GET ");
-  Serial.println(url);
+  http.setTimeout(2000);
+  // Note: Hardcoded IP in original lookup URL replaced with logic? 
+  // Ideally, use a base URL, but for minimal change assuming same host:
+  // Using extern accessBaseUrl base for consistency:
+  String url = accessBaseUrl; 
+  // The original code had /uid-name/ endpoint. Assuming it exists on same host.
+  // We'll reconstruct using registerUrl logic to find base.
+  int slash = registerUrl.lastIndexOf('/');
+  String base = registerUrl.substring(0, slash);
+  url = base + "/uid-name/" + uid;
 
   http.begin(url);
   int code = http.GET();
@@ -182,8 +171,6 @@ void lookupUserByUid(const String &uid) {
     if (uname.length()) {
       lastLoginSuggestedUser = uname;
       lastLoginSuggestedUid = uid;
-      Serial.print("LOOKUP: got username ");
-      Serial.println(uname);
     }
   }
   http.end();
@@ -200,11 +187,15 @@ void deleteUser(const String &uid) {
   }
 
   HTTPClient http;
-  String url = String("http://172.28.219.124:5000/user/") + uid;
+  http.setTimeout(2000);
+  
+  // Reconstruct Base URL
+  int slash = registerUrl.lastIndexOf('/');
+  String base = registerUrl.substring(0, slash);
+  String url = base + "/user/" + uid;
 
   http.begin(url);
   int code = http.sendRequest("DELETE");
-  String resp = http.getString();
   http.end();
 
   if (code == 200) {
@@ -223,12 +214,6 @@ void deleteUser(const String &uid) {
 // DELETE ROOM FOR UID
 // ==========================
 void deleteRoomForUid(const String &uid, const String &room) {
-  Serial.print("DELETE ROOM CALL uid=[");
-  Serial.print(uid);
-  Serial.print("] room=[");
-  Serial.print(room);
-  Serial.println("]");
-
   if (uid.isEmpty()) {
     setStatus(StatusCode::DeleteFail);
     showMsg("Delete error", "No UID", "", true);
@@ -241,31 +226,22 @@ void deleteRoomForUid(const String &uid, const String &room) {
     return;
   }
 
-  String url = "http://172.28.219.124:5000/room/" + uid + "/" + room;
-
-  Serial.print("DELETE URL: ");
-  Serial.println(url);
+  int slash = registerUrl.lastIndexOf('/');
+  String base = registerUrl.substring(0, slash);
+  String url = base + "/room/" + uid + "/" + room;
 
   HTTPClient http;
+  http.setTimeout(2000);
   http.begin(url);
   int code = http.sendRequest("DELETE");
-  String resp = http.getString();
   http.end();
-
-  Serial.print("DELETE HTTP code: ");
-  Serial.println(code);
-  Serial.print("DELETE resp: ");
-  Serial.println(resp);
 
   if (code == 200) {
     setStatus(StatusCode::DeleteOk);
     showMsg("Room removed", "UID: " + uid, "Room " + room, true);
-  } else if (code == 400) {
+  } else if (code == 400 || code == 404) {
     setStatus(StatusCode::DeleteNotFound);
-    showMsg("Delete failed", "Room not found", "", true);
-  } else if (code == 404) {
-    setStatus(StatusCode::DeleteNotFound);
-    showMsg("Delete failed", "UID not found", "", true);
+    showMsg("Delete failed", "Not found", "", true);
   } else {
     setStatus(StatusCode::DeleteFail);
     showMsg("Delete error", "HTTP " + String(code), "", true);

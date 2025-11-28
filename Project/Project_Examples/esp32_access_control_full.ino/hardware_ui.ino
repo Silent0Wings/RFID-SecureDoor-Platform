@@ -1,17 +1,3 @@
-// hardware_ui.ino
-// OLED screen, RGB LED and touch-button helpers
-
-// Uses globals defined in main.ino:
-// - display, displayOk
-// - redPin, greenPin, bluePin
-// - roomID, lastUid, lastStatus, lastStatusCode
-// - tempUsername
-// - deleteModeArmed, deleteRoomModeArmed, deleteRoomPendingRoom
-// - touchPressCount, touchLastTime, lastTouchState
-// - ledOffMillis
-// - LED_SHORT_MS, LED_NORMAL_MS, TOUCH_MULTI_PRESS_WINDOW_MS
-
-// Externs for color constants defined in main.ino
 extern const RgbColor COLOR_OFF;
 extern const RgbColor COLOR_ACCESS_OK;
 extern const RgbColor COLOR_ACCESS_DENIED;
@@ -29,18 +15,15 @@ extern const RgbColor COLOR_DELETE_ROOM_ERR;
 extern const RgbColor COLOR_DELETE_ROOM;
 extern const RgbColor COLOR_DELETE_MODE;
 
+// Extern pins defined in main.ino
+extern const int relayPin;
+extern const int buzzerPin;
+
 void showMsg(const String &l1, const String &l2, const String &l3, bool serial) {
-  String serialLine = l1;
-  if (l2.length()) serialLine += " " + l2;
-  if (l3.length()) serialLine += " " + l3;
-
   if (serial) {
-    Serial.println(serialLine);
+    Serial.println(l1 + " " + l2 + " " + l3);
   }
-
-  if (!displayOk) {
-    return;
-  }
+  if (!displayOk) return;
 
   display.clearDisplay();
   display.setTextSize(1);
@@ -58,7 +41,6 @@ void setColor(int redValue, int greenValue, int blueValue) {
   analogWrite(bluePin, blueValue);
 }
 
-// Overload using named RGB colors
 void setColor(const RgbColor &c) {
   setColor(c.r, c.g, c.b);
 }
@@ -66,15 +48,26 @@ void setColor(const RgbColor &c) {
 void handleLedTimeout() {
   if (ledOffMillis != 0 && millis() > ledOffMillis) {
     setColor(COLOR_OFF);
+    
+    // RELAY LOCK LOGIC: Ensure door is locked when LED turns off
+    digitalWrite(relayPin, LOW); 
+    digitalWrite(buzzerPin, LOW);
+
     ledOffMillis = 0;
   }
 }
 
 void updateIndicatorsForStatus() {
+  // Reset Door/Buzzer defaults
+  digitalWrite(relayPin, LOW);
+  digitalWrite(buzzerPin, LOW);
+
   switch (lastStatusCode) {
     case StatusCode::AccessOk:
       showMsg("Access granted", "UID: " + lastUid);
       setColor(COLOR_ACCESS_OK);
+      // OPEN DOOR
+      digitalWrite(relayPin, HIGH); 
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
 
@@ -82,6 +75,10 @@ void updateIndicatorsForStatus() {
     case StatusCode::AccessForbidden:
       showMsg("Access denied", "UID: " + lastUid);
       setColor(COLOR_ACCESS_DENIED);
+      // BUZZER ALERT
+      digitalWrite(buzzerPin, HIGH);
+      delay(100); // Short beep
+      digitalWrite(buzzerPin, LOW);
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
 
@@ -90,6 +87,10 @@ void updateIndicatorsForStatus() {
     case StatusCode::AccessFail:
       showMsg("Access error", lastStatus);
       setColor(COLOR_ACCESS_ERROR);
+      // ERROR TONE
+      digitalWrite(buzzerPin, HIGH);
+      delay(500); 
+      digitalWrite(buzzerPin, LOW);
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
 
@@ -154,11 +155,15 @@ void updateIndicatorsForStatus() {
   }
 }
 
+// Global variable for debouncing
+unsigned long lastDebounceTime = 0;
+const unsigned long DEBOUNCE_DELAY = 50; // 50ms debounce
+
 void handleTouch() {
-  int current = digitalRead(TOUCH_PIN);
+  int reading = digitalRead(TOUCH_PIN);
   unsigned long now = millis();
 
-  // End of multi-press window
+  // Reset logic if multi-press window expires
   if (touchPressCount > 0 && (now - touchLastTime) > TOUCH_MULTI_PRESS_WINDOW_MS) {
     int count = touchPressCount;
     touchPressCount = 0;
@@ -168,7 +173,6 @@ void handleTouch() {
       String l2 = "Status: " + (lastStatus.length() ? lastStatus : String("NONE"));
       String l3 = lastUid.length() ? "UID: " + lastUid : "";
       showMsg(l1, l2, l3);
-
       setColor(COLOR_TOUCH_INFO);
       ledOffMillis = millis() + LED_SHORT_MS;
     } else if (count == 2) {
@@ -178,31 +182,74 @@ void handleTouch() {
         ledOffMillis = millis() + LED_SHORT_MS;
         return;
       }
-
       deleteRoomModeArmed = true;
       deleteRoomPendingRoom = roomID;
-
       showMsg("Delete room", "Room " + deleteRoomPendingRoom, "Tap card");
       setColor(COLOR_DELETE_ROOM);
       ledOffMillis = 0;
     } else if (count >= 3) {
       deleteModeArmed = true;
       showMsg("Delete mode", "Tap card to delete");
-
       setColor(COLOR_DELETE_MODE);
       ledOffMillis = 0;
     }
   }
 
-  // Rising edge detection on touch input
-  if (lastTouchState == LOW && current == HIGH) {
-    if (now - touchLastTime < TOUCH_MULTI_PRESS_WINDOW_MS) {
-      touchPressCount++;
-    } else {
-      touchPressCount = 1;
-    }
-    touchLastTime = now;
+  // Debounce Logic
+  if (reading != lastTouchState) {
+    lastDebounceTime = now;
   }
 
-  lastTouchState = current;
+  if ((now - lastDebounceTime) > DEBOUNCE_DELAY) {
+    // If the state has stabilized
+    static int stableState = LOW;
+    if (reading != stableState) {
+      stableState = reading;
+      
+      // Rising Edge (Pressed)
+      if (stableState == HIGH) {
+         if (now - touchLastTime < TOUCH_MULTI_PRESS_WINDOW_MS) {
+            touchPressCount++;
+         } else {
+            touchPressCount = 1;
+         }
+         touchLastTime = now;
+      }
+    }
+  }
+
+  lastTouchState = reading;
+}
+
+void verifyRFID() {
+  rfid.PCD_Init();
+  delay(50);
+  byte ver = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+
+  Serial.print("MFRC522 Firmware: 0x");
+  Serial.println(ver, HEX);
+
+  // CRITICAL FIX: Removed while(true) loop
+  if (ver != 0x92 && ver != 0xB2) {
+    Serial.println("ERROR: Unknown MFRC522 firmware or reader not connected!");
+    if (displayOk) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(0, 0);
+      display.println("RFID ERROR");
+      display.println("Check Wiring");
+      display.print("Code: 0x");
+      display.println(ver, HEX);
+      display.display();
+    }
+    // Set error color but allow system to boot (maybe it's intermittent)
+    setColor(255, 0, 0); 
+    delay(1000);
+    setColor(0,0,0);
+  }
+
+  if (ver == 0xB2) {
+    Serial.println("WARNING: Clone MFRC522 detected (0xB2).");
+  }
+  rfid.PCD_DumpVersionToSerial();
 }
