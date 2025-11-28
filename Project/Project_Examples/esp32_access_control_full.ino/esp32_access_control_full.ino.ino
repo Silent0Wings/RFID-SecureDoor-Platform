@@ -13,9 +13,9 @@
 // =============================
 // CONFIGURATION & CREDENTIALS
 // =============================
-const char *WIFI_SSID = "SM-Yahya";      // wiffi name
-const char *WIFI_PASS = "ya1234ya";  // wiffi pswd
-const char *BACKEND_IP = "172.28.219.124";     // ip of backend
+const char *WIFI_SSID = "SM-Yahya";         // wiffi name
+const char *WIFI_PASS = "ya1234ya";         // wiffi pswd
+const char *BACKEND_IP = "172.28.219.124";  // ip of backend
 const int BACKEND_PORT = 5000;
 
 // =============================
@@ -42,7 +42,11 @@ const int BACKEND_PORT = 5000;
 // =============================
 // RGB color struct + named colors
 // =============================
-struct RgbColor { int r; int g; int b; };
+struct RgbColor {
+  int r;
+  int g;
+  int b;
+};
 const RgbColor COLOR_OFF = { 0, 0, 0 };
 const RgbColor COLOR_ACCESS_OK = { 0, 255, 0 };
 const RgbColor COLOR_ACCESS_DENIED = { 255, 0, 0 };
@@ -64,9 +68,26 @@ const RgbColor COLOR_DELETE_MODE = { 180, 0, 255 };
 // Status codes
 // =============================
 enum class StatusCode : uint8_t {
-  None, RegAttempt, RegWait, RegOk, RegFail, RegErrNoParam, RegWifiErr,
-  AccessAttempt, AccessOk, AccessDenied, AccessForbidden, AccessWifiErr, AccessHttpErr, AccessFail,
-  Timeout, DeleteAttempt, DeleteOk, DeleteNotFound, DeleteFail, DeleteWifiErr
+  None,
+  RegAttempt,
+  RegWait,
+  RegOk,
+  RegFail,
+  RegErrNoParam,
+  RegWifiErr,
+  AccessAttempt,
+  AccessOk,
+  AccessDenied,
+  AccessForbidden,
+  AccessWifiErr,
+  AccessHttpErr,
+  AccessFail,
+  Timeout,
+  DeleteAttempt,
+  DeleteOk,
+  DeleteNotFound,
+  DeleteFail,
+  DeleteWifiErr
 };
 
 // =============================
@@ -95,17 +116,17 @@ const char *statusCodeToText(StatusCode s) {
 void setStatus(StatusCode code) {
   lastStatusCode = code;
   // Simple mapping for display
-  if(code == StatusCode::AccessOk) lastStatus = "ACCESS_OK";
-  else if(code == StatusCode::AccessDenied) lastStatus = "ACCESS_DENIED";
-  else lastStatus = "PROCESSING"; 
+  if (code == StatusCode::AccessOk) lastStatus = "ACCESS_OK";
+  else if (code == StatusCode::AccessDenied) lastStatus = "ACCESS_DENIED";
+  else lastStatus = "PROCESSING";
 }
 
 // Pins for Hardware UI
 const int redPin = LED_RED;
 const int greenPin = LED_GREEN;
 const int bluePin = LED_BLUE;
-const int relayPin = DOOR_RELAY_PIN; // Exposed for hardware_ui
-const int buzzerPin = BUZZER_PIN;    // Exposed for hardware_ui
+const int relayPin = DOOR_RELAY_PIN;  // Exposed for hardware_ui
+const int buzzerPin = BUZZER_PIN;     // Exposed for hardware_ui
 
 // =============================
 // WiFi and backend
@@ -129,7 +150,7 @@ static unsigned long lastRead = 0;
 String tempUsername = "";
 String tempPassword = "";
 bool waitingForRFID = false;
-unsigned long registrationStartTime = 0; // REPLACED: rfidTimeout for overflow safety
+unsigned long registrationStartTime = 0;  // REPLACED: rfidTimeout for overflow safety
 
 bool deleteModeArmed = false;
 bool deleteRoomModeArmed = false;
@@ -253,7 +274,7 @@ float floatMap(float x, float in_min, float in_max, float out_min, float out_max
 // ---------------------------
 void setup() {
   Serial.begin(115200);
-  
+
   // Construct URLs dynamically
   String baseUrl = String("http://") + BACKEND_IP + ":" + BACKEND_PORT;
   registerUrl = baseUrl + "/register";
@@ -263,10 +284,10 @@ void setup() {
   pinMode(redPin, OUTPUT);
   pinMode(greenPin, OUTPUT);
   pinMode(bluePin, OUTPUT);
-  
+
   // NEW: Setup Door and Buzzer
   pinMode(DOOR_RELAY_PIN, OUTPUT);
-  digitalWrite(DOOR_RELAY_PIN, LOW); // Default Locked
+  digitalWrite(DOOR_RELAY_PIN, LOW);  // Default Locked
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
 
@@ -284,7 +305,7 @@ void setup() {
   }
 
   SPI.begin();
-  verifyRFID(); // Now non-blocking
+  verifyRFID();  // Now non-blocking
 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   Serial.print("Connecting to WiFi");

@@ -54,7 +54,7 @@ void tryRegisterRFID(const String &uid) {
   }
 
   HTTPClient http;
-  http.setTimeout(2000); // 2s Timeout
+  http.setTimeout(2000);  // 2s Timeout
   http.begin(registerUrl);
   http.addHeader("Content-Type", "application/json");
 
@@ -68,7 +68,7 @@ void tryRegisterRFID(const String &uid) {
   Serial.print("REG: POST ");
   Serial.println(registerUrl);
   // Security: Do not log body containing password in production
-  Serial.println("REG: Sending data..."); 
+  Serial.println("REG: Sending data...");
 
   int code = http.POST(body);
   String resp = http.getString();
@@ -100,9 +100,10 @@ void checkAccessRFID(const String &uid) {
   }
 
   HTTPClient http;
-  http.setTimeout(2000); // 2s Timeout
+  http.setTimeout(2000);  // 2s Timeout
   String url = String(accessBaseUrl) + "/" + uid + "?roomID=" + roomID;
-  Serial.print("ACCESS: GET "); Serial.println(url);
+  Serial.print("ACCESS: GET ");
+  Serial.println(url);
 
   http.begin(url);
   int code = http.GET();
@@ -153,10 +154,10 @@ void lookupUserByUid(const String &uid) {
 
   HTTPClient http;
   http.setTimeout(2000);
-  // Note: Hardcoded IP in original lookup URL replaced with logic? 
+  // Note: Hardcoded IP in original lookup URL replaced with logic?
   // Ideally, use a base URL, but for minimal change assuming same host:
   // Using extern accessBaseUrl base for consistency:
-  String url = accessBaseUrl; 
+  String url = accessBaseUrl;
   // The original code had /uid-name/ endpoint. Assuming it exists on same host.
   // We'll reconstruct using registerUrl logic to find base.
   int slash = registerUrl.lastIndexOf('/');
@@ -188,7 +189,7 @@ void deleteUser(const String &uid) {
 
   HTTPClient http;
   http.setTimeout(2000);
-  
+
   // Reconstruct Base URL
   int slash = registerUrl.lastIndexOf('/');
   String base = registerUrl.substring(0, slash);

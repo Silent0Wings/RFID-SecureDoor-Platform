@@ -250,32 +250,126 @@ String buildLoginFormHtml() {
 String buildLoginResultHtml(const String &tableHtml, const String &errorText) {
   String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>";
   html += "<link rel='stylesheet' href='/style.css'></head><body><div class='card'><h2>My access data</h2>";
-  if (errorText.length() > 0) html += "<div class='error'>" + errorText + "</div>";
-  else {
+
+  if (errorText.length() > 0) {
+    html += "<div class='error'>" + errorText + "</div>";
+  } else {
+    // Pretty-print JSON for login page also
+    String prettyJson = lastStatsRawJson;
+    prettyJson.replace("{", "{\n  ");
+    prettyJson.replace(",", ",\n  ");
+    prettyJson.replace("}", "\n}");
+
     html += "<div class='table-wrapper'>" + tableHtml + "</div>";
-    html += "<p><b>Raw JSON:</b></p><pre>" + lastStatsRawJson + "</pre>";
+    html += "<p><b>Raw JSON:</b></p>";
+
+    html += "<pre style='white-space:pre-wrap;"
+            "overflow-wrap:break-word;"
+            "overflow-x:auto;"
+            "max-width:100%;"
+            "padding:10px;"
+            "background:#101014;"
+            "border:1px solid #2b2b2e;"
+            "border-radius:6px;'>"
+            + prettyJson + "</pre>";
   }
-  html += "<div class='links' style='text-align:center;margin-top:10px'><a href='/login'>Back</a> | <a href='/'>Home</a></div></div></body></html>";
+
+  html += "<div class='links' style='text-align:center;margin-top:10px'>"
+          "<a href='/login'>Back</a> | <a href='/'>Home</a>"
+          "</div></div></body></html>";
+
   return html;
 }
 
 String buildStatusPageHtml() {
-  String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-  html += "<link rel='stylesheet' href='/style.css'></head><body><div class='card'><h2>System status</h2>";
-  html += "<table><tr><th>Field</th><th>Value</th></tr>";
-  html += "<tr><td>WiFi</td><td>" + String(WiFi.status() == WL_CONNECTED ? "CONNECTED" : "DISCONNECTED") + "</td></tr>";
-  html += "<tr><td>Stats Error</td><td>" + lastStatsError + "</td></tr></table>";
-  if (lastStatsRawJson.length()) html += "<pre>" + lastStatsRawJson + "</pre>";
-  html += "<div class='links' style='text-align:center;margin-top:10px'><a href='/'>Home</a></div></div>";
-  html += "<script>setTimeout(function(){ location.reload(); }, 2000);</script></body></html>";
+  String prettyJson = lastStatsRawJson;
+  prettyJson.replace("{", "{\n  ");
+  prettyJson.replace(",", ",\n  ");
+  prettyJson.replace("}", "\n}");
+
+  String wifiState = (WiFi.status() == WL_CONNECTED ? "CONNECTED" : "DISCONNECTED");
+  String wifiColor = (wifiState == "CONNECTED" ? "#4CF04C" : "#FF4C4C");
+  String httpColor = (lastStatsHttpCode == 200 ? "#4CF04C" : "#FF4C4C");
+
+  String html = "<!DOCTYPE html><html><head>";
+  html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+  html += "<link rel='stylesheet' href='/style.css'>";
+
+  // Collapsible box JS
+  html += "<script>";
+  html += "function toggleJson(){"
+          "var x=document.getElementById('jsonbox');"
+          "if(x.style.display==='none'){x.style.display='block';}"
+          "else{x.style.display='none';}"
+          "}";
+  html += "</script>";
+
+  html += "</head><body><div class='card'>";
+
+  html += "<h2>System Status</h2>";
+
+  html += "<table class='data-table'>";
+  html += "<tr><th>Field</th><th>Value</th></tr>";
+
+  // WiFi row (green/red)
+  html += "<tr><td>WiFi</td><td style='color:" + wifiColor + "'>";
+  html += (wifiState == "CONNECTED" ? "[OK] " : "[ERR] ") + wifiState;
+  html += "</td></tr>";
+
+  // HTTP row (green/red)
+  html += "<tr><td>Last HTTP Code</td><td style='color:" + httpColor + "'>";
+  html += (lastStatsHttpCode == 200 ? "[OK] " : "[ERR] ") + String(lastStatsHttpCode);
+  html += "</td></tr>";
+
+  // Error row
+  html += "<tr><td>Stats Error</td><td>";
+  html += (lastStatsError.length() ? lastStatsError : "None");
+  html += "</td></tr>";
+
+  // Last user row
+  html += "<tr><td>Last User</td><td>";
+  html += (lastStatsUser.length() ? lastStatsUser : "None");
+  html += "</td></tr>";
+
+  html += "</table>";
+
+  // Collapsible JSON
+  if (lastStatsRawJson.length()) {
+    html += "<h3>Last Backend Response</h3>";
+    html += "<a href='#' onclick='toggleJson();return false;' "
+            "style='color:#b06fff;font-weight:bold;'>[ Toggle JSON ]</a>";
+
+    html += "<pre id='jsonbox' "
+            "style='white-space:pre-wrap;"
+            "overflow-wrap:break-word;"
+            "overflow-x:auto;"
+            "max-height:300px;"
+            "padding:10px;"
+            "background:#101014;"
+            "border:1px solid #2b2b2e;"
+            "border-radius:6px;"
+            "margin-top:10px;"
+            "display:none;'>"
+            + prettyJson + "</pre>";
+  }
+
+  html += "<div class='links'><a href='/'>Home</a></div>";
+  html += "</div>";
+
+  // Auto refresh
+  html += "<script>setTimeout(function(){ location.reload(); }, 2000);</script>";
+
+  html += "</body></html>";
+
   return html;
 }
+
 
 void setupRoutes() {
   server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send_P(200, "text/css", MAIN_CSS);
   });
-  
+
   server.on("/login.js", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send_P(200, "application/javascript", LOGIN_JS);
   });
@@ -299,20 +393,20 @@ void setupRoutes() {
     String p = request->getParam("password")->value();
 
     // SECURITY: Input Validation
-    if(u.length() < 3 || u.length() > 20) {
-        request->send(200, "text/html", buildRegisterPageHtml("Error: Username must be 3-20 chars"));
-        return;
+    if (u.length() < 3 || u.length() > 20) {
+      request->send(200, "text/html", buildRegisterPageHtml("Error: Username must be 3-20 chars"));
+      return;
     }
-    if(p.length() < 4) {
-        request->send(200, "text/html", buildRegisterPageHtml("Error: Password too short"));
-        return;
+    if (p.length() < 4) {
+      request->send(200, "text/html", buildRegisterPageHtml("Error: Password too short"));
+      return;
     }
 
     tempUsername = u;
     tempPassword = p;
 
     waitingForRFID = true;
-    registrationStartTime = millis(); // Fixed: Overflow safe Logic
+    registrationStartTime = millis();
     setStatus(StatusCode::RegWait);
 
     String msg = "Registration started.\nUser: " + tempUsername + "\nTap card within " + String(REGISTER_TIMEOUT_MS / 1000) + "s.";
@@ -335,7 +429,7 @@ void setupRoutes() {
 
     if (WiFi.status() == WL_CONNECTED) {
       HTTPClient http;
-      http.setTimeout(2000); // 2s Timeout
+      http.setTimeout(2000);  // 2s Timeout
       String url = String(statsUrl) + "?user=" + user + "&password=" + pass;
       http.begin(url);
       httpCode = http.GET();

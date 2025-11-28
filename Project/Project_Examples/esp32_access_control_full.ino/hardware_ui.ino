@@ -48,9 +48,9 @@ void setColor(const RgbColor &c) {
 void handleLedTimeout() {
   if (ledOffMillis != 0 && millis() > ledOffMillis) {
     setColor(COLOR_OFF);
-    
+
     // RELAY LOCK LOGIC: Ensure door is locked when LED turns off
-    digitalWrite(relayPin, LOW); 
+    digitalWrite(relayPin, LOW);
     digitalWrite(buzzerPin, LOW);
 
     ledOffMillis = 0;
@@ -67,7 +67,7 @@ void updateIndicatorsForStatus() {
       showMsg("Access granted", "UID: " + lastUid);
       setColor(COLOR_ACCESS_OK);
       // OPEN DOOR
-      digitalWrite(relayPin, HIGH); 
+      digitalWrite(relayPin, HIGH);
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
 
@@ -77,7 +77,7 @@ void updateIndicatorsForStatus() {
       setColor(COLOR_ACCESS_DENIED);
       // BUZZER ALERT
       digitalWrite(buzzerPin, HIGH);
-      delay(100); // Short beep
+      delay(100);  // Short beep
       digitalWrite(buzzerPin, LOW);
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -89,7 +89,7 @@ void updateIndicatorsForStatus() {
       setColor(COLOR_ACCESS_ERROR);
       // ERROR TONE
       digitalWrite(buzzerPin, HIGH);
-      delay(500); 
+      delay(500);
       digitalWrite(buzzerPin, LOW);
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -157,7 +157,7 @@ void updateIndicatorsForStatus() {
 
 // Global variable for debouncing
 unsigned long lastDebounceTime = 0;
-const unsigned long DEBOUNCE_DELAY = 50; // 50ms debounce
+const unsigned long DEBOUNCE_DELAY = 50;  // 50ms debounce
 
 void handleTouch() {
   int reading = digitalRead(TOUCH_PIN);
@@ -205,15 +205,15 @@ void handleTouch() {
     static int stableState = LOW;
     if (reading != stableState) {
       stableState = reading;
-      
+
       // Rising Edge (Pressed)
       if (stableState == HIGH) {
-         if (now - touchLastTime < TOUCH_MULTI_PRESS_WINDOW_MS) {
-            touchPressCount++;
-         } else {
-            touchPressCount = 1;
-         }
-         touchLastTime = now;
+        if (now - touchLastTime < TOUCH_MULTI_PRESS_WINDOW_MS) {
+          touchPressCount++;
+        } else {
+          touchPressCount = 1;
+        }
+        touchLastTime = now;
       }
     }
   }
@@ -243,9 +243,9 @@ void verifyRFID() {
       display.display();
     }
     // Set error color but allow system to boot (maybe it's intermittent)
-    setColor(255, 0, 0); 
+    setColor(255, 0, 0);
     delay(1000);
-    setColor(0,0,0);
+    setColor(0, 0, 0);
   }
 
   if (ver == 0xB2) {
