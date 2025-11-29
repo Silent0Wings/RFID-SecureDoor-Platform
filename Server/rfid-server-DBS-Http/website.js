@@ -60,5 +60,42 @@ module.exports = function createWebsiteRouter({ getUsers, getLogSheet }) {
     });
   });
 
+    // GET /admin/data - JSON for auto-refresh
+  router.get("/admin/data", (req, res) => {
+    const users = getUsers() || [];
+    const logs = getLogSheet() || null;
+
+    const usersRows = users.map((u) => ({
+      user: esc(u.user),
+      password: esc(u.password),
+      uid: esc(u.uid),
+      counter: esc(u.counter),
+      roomID: esc(u.roomID),
+      access: esc(u.access),
+    }));
+
+    let logsRows = [];
+    let logsHeader = [];
+
+    if (logs) {
+      logsHeader = logs
+        .getRow(1)
+        .values.slice(1)
+        .map((c) => esc(c));
+
+      logs.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (rowNumber === 1) return;
+        logsRows.push(row.values.slice(1).map((c) => esc(c)));
+      });
+    }
+
+    res.json({
+      users: usersRows,
+      logs: logsRows,
+      logHeader: logsHeader,
+    });
+  });
+
+
   return router;
 };
