@@ -15,10 +15,38 @@ extern const RgbColor COLOR_DELETE_ROOM_ERR;
 extern const RgbColor COLOR_DELETE_ROOM;
 extern const RgbColor COLOR_DELETE_MODE;
 
-// Extern pins defined in main.ino
-extern const int relayPin;
+// Only buzzer is extern from main now
 extern const int buzzerPin;
-bool doorIsOpen = false;
+
+// Servo globals from main (MWE-style)
+extern Servo doorServo;
+extern const int DOOR_CLOSED_ANGLE;
+extern const int DOOR_OPEN_ANGLE;
+extern const int SERVO_PIN;
+extern bool doorIsOpen;
+extern unsigned long nextToggleAt;
+extern const unsigned long OPEN_MS;
+
+// Other globals coming from main (not repeated here in full)
+extern bool displayOk;
+extern unsigned long ledOffMillis;
+extern StatusCode lastStatusCode;
+extern String lastUid;
+extern String lastStatus;
+extern String tempUsername;
+extern String roomID;
+extern bool deleteModeArmed;
+extern bool deleteRoomModeArmed;
+extern String deleteRoomPendingRoom;
+extern unsigned long touchLastTime;
+extern int touchPressCount;
+extern int lastTouchState;
+extern const unsigned long TOUCH_MULTI_PRESS_WINDOW_MS;
+extern const unsigned long LED_SHORT_MS;
+extern const unsigned long LED_NORMAL_MS;
+extern const int redPin;
+extern const int greenPin;
+extern const int bluePin;
 
 void showMsg(const String &l1, const String &l2, const String &l3, bool serial) {
   if (serial) {
@@ -36,10 +64,24 @@ void showMsg(const String &l1, const String &l2, const String &l3, bool serial) 
   display.display();
 }
 
-void doorSet(bool open) {
-  digitalWrite(relayPin, open ? HIGH : LOW);  // HIGH = unlocked, LOW = locked (as in setup)
-  doorIsOpen = open;
+// ========== SERVO HELPERS (MWE-style doorSet) ==========
+
+// Called once from setup() in main
+void setupServoLock() {
+  doorServo.attach(SERVO_PIN);  // same as MWE: doorServo.attach(SERVO_PIN);
+  doorIsOpen = false;
+  doorServo.write(DOOR_CLOSED_ANGLE);
+  nextToggleAt = 0;
 }
+
+// High-level door API used by status machine
+void doorSet(bool open) {
+  doorIsOpen = open;
+  int angle = open ? DOOR_OPEN_ANGLE : DOOR_CLOSED_ANGLE;
+  doorServo.write(angle);
+}
+
+// =======================================================
 
 void setColor(int redValue, int greenValue, int blueValue) {
   analogWrite(redPin, redValue);
@@ -51,7 +93,7 @@ void setColor(const RgbColor &c) {
   setColor(c.r, c.g, c.b);
 }
 
-// Simple success "melody": 3 short pulses on the buzzer (or vibration motor)
+// Simple success "melody": 3 short pulses
 void playSuccessMelody() {
   for (int i = 0; i < 3; ++i) {
     digitalWrite(buzzerPin, HIGH);
@@ -82,7 +124,6 @@ void playDeleteRoomArmPattern() {
 void playDeleteUserArmPattern() {
   buzzerPulse(80, 60, 3);
 }
-
 
 // Access granted: 3 short pulses
 void playAccessOkPattern() {
@@ -140,42 +181,51 @@ void playTouchInfoPattern() {
   buzzerPulse(60, 40, 2);
 }
 
-
 void handleLedTimeout() {
   if (ledOffMillis != 0 && millis() > ledOffMillis) {
     setColor(COLOR_OFF);
-
-    // Ensure door is locked when the status effect expires
-    doorSet(false);
     digitalWrite(buzzerPin, LOW);
-
+    // Door movement is handled by handleDoorTimeout()
     ledOffMillis = 0;
   }
 }
 
+// Non-blocking door auto-close based on MWE-style timing
+void handleDoorTimeout() {
+  if (!doorIsOpen) return;
+  if (nextToggleAt == 0) return;
+
+  unsigned long now = millis();
+  if (now >= nextToggleAt) {
+    doorSet(false);
+    nextToggleAt = 0;
+    Serial.println("Door CLOSED (timeout)");
+  }
+}
 
 void updateIndicatorsForStatus() {
-  // Only reset buzzer by default; door is handled per status + timeout
   digitalWrite(buzzerPin, LOW);
 
   switch (lastStatusCode) {
     case StatusCode::AccessOk:
       showMsg("Access granted", "UID: " + lastUid);
       setColor(COLOR_ACCESS_OK);
-      // OPEN DOOR fully
+
+      // Fully open using MWE-style doorSet, then auto-close after OPEN_MS
       doorSet(true);
       playAccessOkPattern();
-      // Keep door open for 3 seconds, then handleLedTimeout() will close it
-      ledOffMillis = millis() + 3000;  // 3000 ms = 3 s
-      break;
+      nextToggleAt = millis() + OPEN_MS;
+      Serial.println("Door OPEN (access ok)");
 
+      ledOffMillis = millis() + LED_NORMAL_MS;
+      break;
 
     case StatusCode::AccessDenied:
     case StatusCode::AccessForbidden:
       showMsg("Access denied", "UID: " + lastUid);
       setColor(COLOR_ACCESS_DENIED);
-      // Door must stay closed
-      doorSet(false);  // <= motor fully closed immediately
+      doorSet(false);
+      nextToggleAt = 0;
       playAccessDeniedPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -185,8 +235,8 @@ void updateIndicatorsForStatus() {
     case StatusCode::AccessFail:
       showMsg("Access error", lastStatus);
       setColor(COLOR_ACCESS_ERROR);
-      // Close door on error
       doorSet(false);
+      nextToggleAt = 0;
       playAccessErrorPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -194,8 +244,8 @@ void updateIndicatorsForStatus() {
     case StatusCode::RegWait:
       showMsg("Registration", "User: " + tempUsername, "Tap card...");
       setColor(COLOR_REG_WAIT);
-      // Keep door closed while waiting for registration
       doorSet(false);
+      nextToggleAt = 0;
       playRegWaitPattern();
       ledOffMillis = 0;
       break;
@@ -203,8 +253,8 @@ void updateIndicatorsForStatus() {
     case StatusCode::RegOk:
       showMsg("Registration OK", "UID: " + lastUid);
       setColor(COLOR_REG_OK);
-      // Registration does not open the door
       doorSet(false);
+      nextToggleAt = 0;
       playRegOkPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -215,6 +265,7 @@ void updateIndicatorsForStatus() {
       showMsg("Registration error", lastStatus);
       setColor(COLOR_REG_ERROR);
       doorSet(false);
+      nextToggleAt = 0;
       playRegErrorPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -223,6 +274,7 @@ void updateIndicatorsForStatus() {
       showMsg("Registration timed out");
       setColor(COLOR_TIMEOUT);
       doorSet(false);
+      nextToggleAt = 0;
       playTimeoutPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -231,8 +283,8 @@ void updateIndicatorsForStatus() {
     case StatusCode::RegAttempt:
       showMsg("Processing...", "UID: " + lastUid);
       setColor(COLOR_PROCESSING);
-      // Keep door closed until we know result
       doorSet(false);
+      nextToggleAt = 0;
       ledOffMillis = 0;
       break;
 
@@ -240,6 +292,7 @@ void updateIndicatorsForStatus() {
       showMsg("Delete OK", "UID: " + lastUid);
       setColor(COLOR_DELETE_OK);
       doorSet(false);
+      nextToggleAt = 0;
       playDeleteOkPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -248,6 +301,7 @@ void updateIndicatorsForStatus() {
       showMsg("Delete failed", "UID not found");
       setColor(COLOR_DELETE_NOTFOUND);
       doorSet(false);
+      nextToggleAt = 0;
       playDeleteNotFoundPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -257,6 +311,7 @@ void updateIndicatorsForStatus() {
       showMsg("Delete error");
       setColor(COLOR_DELETE_ERROR);
       doorSet(false);
+      nextToggleAt = 0;
       playDeleteErrorPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -266,12 +321,11 @@ void updateIndicatorsForStatus() {
     default:
       setColor(COLOR_OFF);
       doorSet(false);
+      nextToggleAt = 0;
       ledOffMillis = 0;
       break;
   }
 }
-
-
 
 // Global variable for debouncing
 unsigned long lastDebounceTime = 0;
@@ -360,7 +414,6 @@ void verifyRFID() {
   Serial.print("MFRC522 Firmware: 0x");
   Serial.println(ver, HEX);
 
-  // CRITICAL FIX: Removed while(true) loop
   if (ver != 0x92 && ver != 0xB2) {
     Serial.println("ERROR: Unknown MFRC522 firmware or reader not connected!");
     if (displayOk) {
@@ -373,7 +426,6 @@ void verifyRFID() {
       display.println(ver, HEX);
       display.display();
     }
-    // Set error color but allow system to boot (maybe it's intermittent)
     setColor(255, 0, 0);
     delay(1000);
     setColor(0, 0, 0);

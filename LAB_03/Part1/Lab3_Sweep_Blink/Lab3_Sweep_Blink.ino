@@ -3,7 +3,7 @@
 //#include <WebServer.h>
  
 Servo myservo;
-const int servoPin = 21;
+const int servoPin = 26;
 const int ledPin13 = 13;
 const int ledPin12 = 12;
 
