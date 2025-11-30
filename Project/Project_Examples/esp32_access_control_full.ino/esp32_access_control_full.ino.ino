@@ -9,7 +9,6 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <ESP32Servo.h>
 
 // =============================
 // CONFIGURATION & CREDENTIALS
@@ -29,7 +28,6 @@ const int BACKEND_PORT = 5000;
 #define LED_BLUE 12
 #define TOUCH_PIN 14
 #define POT_PIN 37
-#define DOOR_SERVO_PIN 26  // door servo signal (YELLOW wire)
 #define BUZZER_PIN 25      // buzzer only
 
 // OLED I2C
@@ -39,22 +37,6 @@ const int BACKEND_PORT = 5000;
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_ADDR 0x3C
-
-// =============================
-// SERVO (from MWE-style logic)
-// =============================
-Servo doorServo;
-const int SERVO_PIN = DOOR_SERVO_PIN;  // HS-422 signal pin
-const int servoPin = DOOR_SERVO_PIN;   // legacy alias if needed elsewhere
-
-const int DOOR_CLOSED_ANGLE = 0;  // adjust after mechanical test
-const int DOOR_OPEN_ANGLE = 90;   // adjust after mechanical test
-
-const unsigned long OPEN_MS = 3000;    // door open time after AccessOk
-const unsigned long CLOSED_MS = 3000;  // kept from MWE, not strictly required
-
-bool doorIsOpen = false;
-unsigned long nextToggleAt = 0;
 
 // =============================
 // RGB color struct + named colors
@@ -140,7 +122,6 @@ void setStatus(StatusCode code) {
 const int redPin = LED_RED;
 const int greenPin = LED_GREEN;
 const int bluePin = LED_BLUE;
-// IMPORTANT: no relay pin, servo only
 const int buzzerPin = BUZZER_PIN;
 
 // =============================
@@ -205,14 +186,10 @@ void setupRoutes();
 void updateIndicatorsForStatus();
 void handleTouch();
 void handleLedTimeout();
-void handleDoorTimeout();
 void showMsg(const String &l1, const String &l2 = "", const String &l3 = "", bool serial = true);
 void setColor(int redValue, int greenValue, int blueValue);
 float floatMap(float x, float in_min, float in_max, float out_min, float out_max);
 void verifyRFID();
-
-// NEW: servo setup helper (implemented in the other file)
-void setupServoLock();
 
 // ---------------------------
 // Helpers
@@ -301,9 +278,6 @@ void setup() {
   pinMode(greenPin, OUTPUT);
   pinMode(bluePin, OUTPUT);
 
-  // Servo: configure once, MWE-style
-  setupServoLock();
-
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
 
@@ -358,7 +332,6 @@ void loop() {
   handleRegistrationTimeout();
   handleTouch();
   handleLedTimeout();
-  handleDoorTimeout();
 
   if (!waitingForRFID && millis() - lastEventMillis > STATUS_IDLE_REFRESH_MS) {
     showMsg("ESP32 Access", "Room " + roomID);

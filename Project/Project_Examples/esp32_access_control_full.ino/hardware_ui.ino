@@ -18,15 +18,6 @@ extern const RgbColor COLOR_DELETE_MODE;
 // Only buzzer is extern from main now
 extern const int buzzerPin;
 
-// Servo globals from main (MWE-style)
-extern Servo doorServo;
-extern const int DOOR_CLOSED_ANGLE;
-extern const int DOOR_OPEN_ANGLE;
-extern const int SERVO_PIN;
-extern bool doorIsOpen;
-extern unsigned long nextToggleAt;
-extern const unsigned long OPEN_MS;
-
 // Other globals coming from main (not repeated here in full)
 extern bool displayOk;
 extern unsigned long ledOffMillis;
@@ -63,25 +54,6 @@ void showMsg(const String &l1, const String &l2, const String &l3, bool serial) 
   if (l3.length()) display.println(l3);
   display.display();
 }
-
-// ========== SERVO HELPERS (MWE-style doorSet) ==========
-
-// Called once from setup() in main
-void setupServoLock() {
-  doorServo.attach(SERVO_PIN);  // same as MWE: doorServo.attach(SERVO_PIN);
-  doorIsOpen = false;
-  doorServo.write(DOOR_CLOSED_ANGLE);
-  nextToggleAt = 0;
-}
-
-// High-level door API used by status machine
-void doorSet(bool open) {
-  doorIsOpen = open;
-  int angle = open ? DOOR_OPEN_ANGLE : DOOR_CLOSED_ANGLE;
-  doorServo.write(angle);
-}
-
-// =======================================================
 
 void setColor(int redValue, int greenValue, int blueValue) {
   analogWrite(redPin, redValue);
@@ -185,21 +157,7 @@ void handleLedTimeout() {
   if (ledOffMillis != 0 && millis() > ledOffMillis) {
     setColor(COLOR_OFF);
     digitalWrite(buzzerPin, LOW);
-    // Door movement is handled by handleDoorTimeout()
     ledOffMillis = 0;
-  }
-}
-
-// Non-blocking door auto-close based on MWE-style timing
-void handleDoorTimeout() {
-  if (!doorIsOpen) return;
-  if (nextToggleAt == 0) return;
-
-  unsigned long now = millis();
-  if (now >= nextToggleAt) {
-    doorSet(false);
-    nextToggleAt = 0;
-    Serial.println("Door CLOSED (timeout)");
   }
 }
 
@@ -210,13 +168,7 @@ void updateIndicatorsForStatus() {
     case StatusCode::AccessOk:
       showMsg("Access granted", "UID: " + lastUid);
       setColor(COLOR_ACCESS_OK);
-
-      // Fully open using MWE-style doorSet, then auto-close after OPEN_MS
-      doorSet(true);
       playAccessOkPattern();
-      nextToggleAt = millis() + OPEN_MS;
-      Serial.println("Door OPEN (access ok)");
-
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
 
@@ -224,8 +176,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::AccessForbidden:
       showMsg("Access denied", "UID: " + lastUid);
       setColor(COLOR_ACCESS_DENIED);
-      doorSet(false);
-      nextToggleAt = 0;
       playAccessDeniedPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -235,8 +185,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::AccessFail:
       showMsg("Access error", lastStatus);
       setColor(COLOR_ACCESS_ERROR);
-      doorSet(false);
-      nextToggleAt = 0;
       playAccessErrorPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -244,8 +192,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::RegWait:
       showMsg("Registration", "User: " + tempUsername, "Tap card...");
       setColor(COLOR_REG_WAIT);
-      doorSet(false);
-      nextToggleAt = 0;
       playRegWaitPattern();
       ledOffMillis = 0;
       break;
@@ -253,8 +199,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::RegOk:
       showMsg("Registration OK", "UID: " + lastUid);
       setColor(COLOR_REG_OK);
-      doorSet(false);
-      nextToggleAt = 0;
       playRegOkPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -264,8 +208,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::RegWifiErr:
       showMsg("Registration error", lastStatus);
       setColor(COLOR_REG_ERROR);
-      doorSet(false);
-      nextToggleAt = 0;
       playRegErrorPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -273,8 +215,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::Timeout:
       showMsg("Registration timed out");
       setColor(COLOR_TIMEOUT);
-      doorSet(false);
-      nextToggleAt = 0;
       playTimeoutPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -283,16 +223,12 @@ void updateIndicatorsForStatus() {
     case StatusCode::RegAttempt:
       showMsg("Processing...", "UID: " + lastUid);
       setColor(COLOR_PROCESSING);
-      doorSet(false);
-      nextToggleAt = 0;
       ledOffMillis = 0;
       break;
 
     case StatusCode::DeleteOk:
       showMsg("Delete OK", "UID: " + lastUid);
       setColor(COLOR_DELETE_OK);
-      doorSet(false);
-      nextToggleAt = 0;
       playDeleteOkPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -300,8 +236,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::DeleteNotFound:
       showMsg("Delete failed", "UID not found");
       setColor(COLOR_DELETE_NOTFOUND);
-      doorSet(false);
-      nextToggleAt = 0;
       playDeleteNotFoundPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -310,8 +244,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::DeleteWifiErr:
       showMsg("Delete error");
       setColor(COLOR_DELETE_ERROR);
-      doorSet(false);
-      nextToggleAt = 0;
       playDeleteErrorPattern();
       ledOffMillis = millis() + LED_NORMAL_MS;
       break;
@@ -320,8 +252,6 @@ void updateIndicatorsForStatus() {
     case StatusCode::None:
     default:
       setColor(COLOR_OFF);
-      doorSet(false);
-      nextToggleAt = 0;
       ledOffMillis = 0;
       break;
   }
@@ -350,7 +280,6 @@ void handleTouch() {
       ledOffMillis = millis() + LED_SHORT_MS;
 
     } else if (count == 2) {
-      // QUEUE ROOM DELETE, CANCEL USER DELETE
       if (roomID.length() == 0) {
         showMsg("Delete room", "Invalid room");
         setColor(COLOR_DELETE_ROOM_ERR);
@@ -358,24 +287,23 @@ void handleTouch() {
         return;
       }
 
-      deleteModeArmed = false;  // cancel any user delete
+      deleteModeArmed = false;
       deleteRoomModeArmed = true;
       deleteRoomPendingRoom = roomID;
 
       showMsg("Delete room", "Room " + deleteRoomPendingRoom, "Tap card");
       setColor(COLOR_DELETE_ROOM);
-      playDeleteRoomArmPattern();  // sound for room delete queued
+      playDeleteRoomArmPattern();
       ledOffMillis = 0;
 
     } else if (count >= 3) {
-      // QUEUE USER DELETE, CANCEL ROOM DELETE
       deleteRoomModeArmed = false;
       deleteRoomPendingRoom = "";
       deleteModeArmed = true;
 
       showMsg("Delete mode", "Tap card to delete user");
       setColor(COLOR_DELETE_MODE);
-      playDeleteUserArmPattern();  // sound for user delete queued
+      playDeleteUserArmPattern();
       ledOffMillis = 0;
     }
   }
@@ -386,12 +314,10 @@ void handleTouch() {
   }
 
   if ((now - lastDebounceTime) > DEBOUNCE_DELAY) {
-    // If the state has stabilized
     static int stableState = LOW;
     if (reading != stableState) {
       stableState = reading;
 
-      // Rising Edge (Pressed)
       if (stableState == HIGH) {
         if (now - touchLastTime < TOUCH_MULTI_PRESS_WINDOW_MS) {
           touchPressCount++;
