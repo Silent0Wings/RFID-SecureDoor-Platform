@@ -1,0 +1,122 @@
+/* Global dark theme */
+body {
+  background: #0e0e10;
+  font-family: Arial, sans-serif;
+  color: #e6e6e6;
+  margin: 0;
+  padding: 40px;
+}
+
+/* Login card */
+.card {
+  max-width: 350px;
+  margin: auto;
+  background: #1a1a1d;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(128, 0, 255, 0.35);
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #c084fc;
+}
+
+label {
+  font-weight: bold;
+  display: block;
+  margin-bottom: 5px;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  background: #101014;
+  color: #eee;
+  border: 1px solid #3b2d4a;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  transition: 0.2s;
+}
+
+input:focus {
+  outline: none;
+  border-color: #b06fff;
+  box-shadow: 0 0 6px #b06fff;
+}
+
+/* Buttons */
+button {
+  width: 100%;
+  padding: 10px;
+  background: #b06fff;
+  border: none;
+  color: black;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+button:hover {
+  background: #d3a6ff;
+}
+
+/* Dashboard */
+.wrapper {
+  max-width: 1200px;
+  margin: auto;
+  background: #1a1a1d;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(128, 0, 255, 0.35);
+}
+
+/* Scrollable table wrapper */
+.table-wrapper {
+  overflow-x: auto;
+  width: 100%;
+  margin-top: 20px;
+}
+
+/* Data table */
+.data-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.data-table th {
+  background: #8b5cf6;
+  color: white;
+  padding: 10px;
+  white-space: nowrap;
+  border-bottom: 2px solid #b694ff;
+}
+
+.data-table td {
+  background: #151518;
+  padding: 10px;
+  border-bottom: 1px solid #2b2b2e;
+  transition: 0.2s;
+}
+
+/* Hover effect */
+.data-table tr:hover td {
+  background: #2a1546;
+  box-shadow: inset 0 0 10px rgba(176, 111, 255, 0.4);
+}
+
+.empty {
+  padding: 10px;
+  color: #777;
+}
+
+/* Error message */
+.error {
+  text-align: center;
+  margin-bottom: 10px;
+  color: #ff4c4c;
+}

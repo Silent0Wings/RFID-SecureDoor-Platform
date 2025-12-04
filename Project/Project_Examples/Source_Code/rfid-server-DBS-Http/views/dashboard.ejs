@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+
+  <body>
+    <div class="wrapper">
+      <h1>Admin Dashboard</h1>
+
+      <h2>Users (users.xlsx)</h2>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Password</th>
+              <th>UID</th>
+              <th>Counter</th>
+              <th>RoomID</th>
+              <th>Access</th>
+            </tr>
+          </thead>
+          <tbody id="users-body">
+            <% users.forEach(u => { %>
+            <tr>
+              <td><%= u.user %></td>
+              <td><%= u.password %></td>
+              <td><%= u.uid %></td>
+              <td><%= u.counter %></td>
+              <td><%= u.roomID %></td>
+              <td><%= u.access %></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Logs (logs.xlsx)</h2>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <% logHeader.forEach(h => { %>
+              <th><%= h %></th>
+              <% }) %>
+            </tr>
+          </thead>
+
+          <tbody id="logs-body">
+            <% logs.forEach(row => { %>
+            <tr>
+              <% row.forEach(col => { %>
+              <td><%= col %></td>
+              <% }) %>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <script>
+      const REFRESH_INTERVAL_MS = 5000; // 5 seconds
+
+      async function refreshDashboard() {
+        try {
+          const res = await fetch("/admin/data");
+          if (!res.ok) return;
+
+          const data = await res.json();
+          const usersBody = document.getElementById("users-body");
+          const logsBody = document.getElementById("logs-body");
+
+          if (usersBody && Array.isArray(data.users)) {
+            usersBody.innerHTML = data.users
+              .map(
+                (u) => `
+              <tr>
+                <td>${u.user}</td>
+                <td>${u.password}</td>
+                <td>${u.uid}</td>
+                <td>${u.counter}</td>
+                <td>${u.roomID}</td>
+                <td>${u.access}</td>
+              </tr>`
+              )
+              .join("");
+          }
+
+          if (logsBody && Array.isArray(data.logs)) {
+            logsBody.innerHTML = data.logs
+              .map(
+                (row) =>
+                  `<tr>${row.map((col) => `<td>${col}</td>`).join("")}</tr>`
+              )
+              .join("");
+          }
+        } catch (err) {
+          console.error("Dashboard auto-refresh failed", err);
+        }
+      }
+
+      setInterval(refreshDashboard, REFRESH_INTERVAL_MS);
+    </script>
+  </body>
+</html>
