@@ -6,14 +6,14 @@
 #include <ESP32Servo.h>
 #include <ESPmDNS.h>
 
-const char *ssid = "REDACTED_SSID";
+const char *ssid = "Chimera";
 const char *password = "Sranklord1";
 
 /*
 alternative Network
 */
-const char *ssid1 = "REDACTED_SSID";
-const char *password1 = "REDACTED_PASSWORD";
+const char *ssid1 = "SM-Yahya";
+const char *password1 = "ya1234ya";
 
 bool alternativeNetwork = true;
 WebServer server(80);

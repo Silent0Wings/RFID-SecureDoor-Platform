@@ -2,7 +2,7 @@
 #include <NetworkClient.h>
 #include <WebServer.h>
 
-const char *ssid = "REDACTED_SSID";
+const char *ssid = "Chimera";
 const char *password = "Sranklord1";
 
 WebServer server(80);
