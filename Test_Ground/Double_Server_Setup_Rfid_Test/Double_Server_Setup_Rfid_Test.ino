@@ -70,8 +70,8 @@
 // =============================
 // WiFi and backend
 // =============================
-const char *ssid = "BELL009";
-const char *password = "17D2A27F3E14";
+const char *ssid = "REDACTED_SSID";
+const char *password = "REDACTED_PASSWORD";
 const char *registerUrl = "http://192.168.2.11:5000/register";  // POST user/pass/uid/roomID
 const char *accessBaseUrl = "http://192.168.2.11:5000/user";    // GET uid/roomID
 const char *statsUrl = "http://192.168.2.11:5000/stats";        // GET user/password

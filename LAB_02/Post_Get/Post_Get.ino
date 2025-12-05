@@ -1,8 +1,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
-const char* ssid = "SM-Yahya";
-const char* password = "ya1234ya";
+const char* ssid = "REDACTED_SSID";
+const char* password = "REDACTED_PASSWORD";
 
 // Encode ':' -> %3A for valid URLs
 String encodeMac(String mac) {

@@ -6,8 +6,8 @@
 #define SS_PIN 21
 #define RST_PIN 22
 
-const char* ssid = "SM-Yahya";
-const char* password = "ya1234ya";
+const char* ssid = "REDACTED_SSID";
+const char* password = "REDACTED_PASSWORD";
 
 
 

@@ -12,8 +12,8 @@ const char *password = "Sranklord1";
 /*
 alternative Network
 */
-const char *ssid1 = "SM-Yahya";
-const char *password1 = "ya1234ya";
+const char *ssid1 = "REDACTED_SSID";
+const char *password1 = "REDACTED_PASSWORD";
 
 bool alternativeNetwork = true;
 WebServer server(80);

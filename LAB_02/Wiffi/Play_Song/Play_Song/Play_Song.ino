@@ -19,8 +19,8 @@ const char* songNames[] = { "harrypotter", "jigglypuffsong", "tetris", "gameofth
 // login stuff
 // -------
 // Set these to match your actual router (must be 2.4 GHz)
-const char* ssid = "SM-Yahya";
-const char* password = "ya1234ya";
+const char* ssid = "REDACTED_SSID";
+const char* password = "REDACTED_PASSWORD";
 
 //---------
 // Debug stuf

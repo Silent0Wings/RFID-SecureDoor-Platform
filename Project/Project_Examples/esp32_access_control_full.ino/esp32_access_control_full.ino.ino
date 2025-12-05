@@ -13,8 +13,8 @@
 // =============================
 // CONFIGURATION & CREDENTIALS
 // =============================
-const char *WIFI_SSID = "SM-Yahya";         // wiffi name
-const char *WIFI_PASS = "ya1234ya";         // wiffi pswd
+const char *WIFI_SSID = "REDACTED_SSID";         // wiffi name
+const char *WIFI_PASS = "REDACTED_PASSWORD";         // wiffi pswd
 const char *BACKEND_IP = "10.67.134.124";  // ip of backend
 const int BACKEND_PORT = 5000;
 

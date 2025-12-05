@@ -2,8 +2,8 @@
 #include <HTTPClient.h>
 
 // Set these to match your actual router (must be 2.4 GHz)
-const char* ssid = "SM-Yahya";
-const char* password = "ya1234ya";
+const char* ssid = "REDACTED_SSID";
+const char* password = "REDACTED_PASSWORD";
 
 // This laptop should also be connected to the same network as the board
 // open serial Monitor to see connection massages

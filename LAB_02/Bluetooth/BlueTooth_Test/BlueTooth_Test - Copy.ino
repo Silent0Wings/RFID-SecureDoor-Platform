@@ -7,8 +7,8 @@
 
 // ====== CONFIG ======
 #define BUZZER_PIN 21
-const char* ssid = "SM-Yahya";
-const char* password = "ya1234ya";
+const char* ssid = "REDACTED_SSID";
+const char* password = "REDACTED_PASSWORD";
 const char* songNames[] = { "harrypotter", "jigglypuffsong", "tetris", "gameofthrones" };
 const char* bNames = "IoT_Jukebox";
 #define QUEUE_SIZE 5

@@ -8,8 +8,8 @@
 #include <BLEAdvertisedDevice.h>
 
 // ===== WIFI + PREF CONFIG =====
-static const char* WIFI_SSID = "SM-Yahya";
-static const char* WIFI_PASS = "ya1234ya";
+static const char* WIFI_SSID = "REDACTED_SSID";
+static const char* WIFI_PASS = "REDACTED_PASSWORD";
 static const char* PREF_KEY  = "IoT_Jukebox"; // server-side key
 static const char* PREF_URL  = "https://iotjukebox.onrender.com/preference";
 
