@@ -24,6 +24,18 @@ All communication between the ESP32 and the Node.js backend is done via **REST e
 
 ---
 
+## 🖥️ Backend Servers (Node.js)
+
+The `Server` folder contains three backend implementations:
+
+- `rfid-server` – basic prototype for early testing
+- `rfid-server-DBS` – version with ExcelJS storage
+- `rfid-server-DBS-Http` – final HTTP + JSON REST backend used by the ESP32
+
+Each backend must install dependencies using:
+
+---
+
 ## 📄 Important PDFs
 
 - **Documentation.pdf** – Full system report, diagrams, risks, and architecture.  
