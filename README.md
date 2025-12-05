@@ -13,6 +13,17 @@ All communication between the ESP32 and the Node.js backend is done via **REST e
 
 ---
 
+## ▶️ How It Works (Quick Example)
+
+1. Admin opens `/register` on ESP32.
+2. Enters user info.
+3. Taps a blank RFID card during registration window.
+4. ESP32 sends `POST /register` (JSON) to backend.
+5. Backend stores user → Excel.
+6. User taps again → backend decision → LED + buzzer + OLED feedback.
+
+---
+
 ## 📄 Important PDFs
 
 - **Documentation.pdf** – Full system report, diagrams, risks, and architecture.  
