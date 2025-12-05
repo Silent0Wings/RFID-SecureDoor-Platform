@@ -16,7 +16,7 @@
 // ====== CONFIG ======
 #define BUZZER_PIN 21
 const char* ssid = "REDACTED_SSID";
-const char* password = "Sranklord1";
+const char* password = "REDACTED_PASSWORD";
 
 // API base
 static const char* API_BASE = "https://iotjukebox.onrender.com";

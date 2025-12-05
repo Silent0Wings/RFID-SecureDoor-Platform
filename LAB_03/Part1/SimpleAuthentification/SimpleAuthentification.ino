@@ -3,7 +3,7 @@
 #include <WebServer.h>
 
 const char *ssid = "REDACTED_SSID";
-const char *password = "Sranklord1";
+const char *password = "REDACTED_PASSWORD";
 
 WebServer server(80);
 

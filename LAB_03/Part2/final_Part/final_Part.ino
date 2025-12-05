@@ -41,7 +41,7 @@ const lmic_pinmap lmic_pins = {
 
 // ---------- WiFi ----------
 const char* ssid = "REDACTED_SSID";
-const char* pass = "Sranklord1";
+const char* pass = "REDACTED_PASSWORD";
 const char* ssid1 = "REDACTED_SSID";
 const char* pass1 = "REDACTED_PASSWORD";
 bool useAlt = true;

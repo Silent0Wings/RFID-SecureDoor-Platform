@@ -21,7 +21,7 @@
 ///////please enter your sensitive data in the Secret tab/arduino_secrets.h
 /////// WiFi Settings ///////
 char ssid[] = "REDACTED_SSID";
-char pass[] = "Sranklord1";
+char pass[] = "REDACTED_PASSWORD";
 
 char serverAddress[] = "192.168.0.3";  // server address
 int port = 8080;

@@ -2,7 +2,7 @@
 #include <HTTPClient.h>
 
 const char* ssid = "REDACTED_SSID";
-const char* password = "Sranklord1";
+const char* password = "REDACTED_PASSWORD";
 
 // Invoke-WebRequest -Uri "https://iotjukebox.onrender.com/preference?id=3a:3Acf:3Ad2:3A03:3Ab5:3A6b&key=YahyaPhone&value=harrypotter" -Method POST
 

@@ -8,7 +8,7 @@
 #include "buzzer.h"
 
 const char *ssid = "REDACTED_SSID";
-const char *password = "Sranklord1";
+const char *password = "REDACTED_PASSWORD";
 const char *bNames = "IoT_Jukebox";
 
 BluetoothSerial SerialBT; // Classic BT

@@ -15,7 +15,7 @@
 
 // ---------- WIFI ----------
 const char* WIFI_SSID = "REDACTED_SSID";
-const char* WIFI_PASS = "Sranklord1";
+const char* WIFI_PASS = "REDACTED_PASSWORD";
 
 // ---------- API ----------
 static const char* API_BASE = "https://iotjukebox.onrender.com";
