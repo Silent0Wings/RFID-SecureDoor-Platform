@@ -72,6 +72,18 @@ The system consists of **two cooperating backends**:
 
 Communication between the ESP32 and backend is strictly **REST over HTTP with JSON payloads**.
 
+---
+
+## ✨ Features
+
+- RFID registration and authentication
+- REST-based access checks (JSON)
+- OLED, RGB LED, buzzer, and touch-button UI
+- Delete-room and delete-user modes
+- Embedded local ESP32 web server
+- Node.js backend with Excel persistence
+- Auto-refresh admin dashboard
+- Multi-room simulation using potentiometer
 
 ---
 
