@@ -18,8 +18,8 @@
 bool debugSensor = false;
 // ---------- LoRaWAN keys (OTAA) ----------
 static const u1_t PROGMEM APPEUI[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };                                                   // LSB
-static const u1_t PROGMEM DEVEUI[8] = { 0xC5, 0x3C, 0x07, 0xD0, 0x7E, 0xD5, 0xB3, 0x70 };                                                   // LSB
-static const u1_t PROGMEM APPKEY[16] = { 0x98, 0xB8, 0x84, 0xD7, 0xB1, 0x19, 0x01, 0x04, 0x25, 0x16, 0x4F, 0x2F, 0x2F, 0xB0, 0x90, 0x32 };  // MSB
+static const u1_t PROGMEM DEVEUI[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };                                                   // LSB
+static const u1_t PROGMEM APPKEY[16] = { ***REMOVED*** };  // MSB
 
 void os_getArtEui(u1_t* b) {
   memcpy_P(b, APPEUI, 8);
@@ -40,10 +40,10 @@ const lmic_pinmap lmic_pins = {
 };
 
 // ---------- WiFi ----------
-const char* ssid = "Chimera";
+const char* ssid = "REDACTED_SSID";
 const char* pass = "Sranklord1";
-const char* ssid1 = "SM-Yahya";
-const char* pass1 = "ya1234ya";
+const char* ssid1 = "REDACTED_SSID";
+const char* pass1 = "REDACTED_PASSWORD";
 bool useAlt = true;
 WebServer server(80);
 
