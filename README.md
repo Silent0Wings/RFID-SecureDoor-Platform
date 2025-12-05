@@ -13,6 +13,29 @@ All communication between the ESP32 and the Node.js backend is done via **REST e
 
 ---
 
+## ▶️ How It Works (Quick Example)
+
+1. Admin opens `/register` on ESP32.
+2. Enters user info.
+3. Taps a blank RFID card during registration window.
+4. ESP32 sends `POST /register` (JSON) to backend.
+5. Backend stores user → Excel.
+6. User taps again → backend decision → LED + buzzer + OLED feedback.
+
+---
+
+## 🖥️ Backend Servers (Node.js)
+
+The `Server` folder contains three backend implementations:
+
+- `rfid-server` – basic prototype for early testing
+- `rfid-server-DBS` – version with ExcelJS storage
+- `rfid-server-DBS-Http` – final HTTP + JSON REST backend used by the ESP32
+
+Each backend must install dependencies using:
+
+---
+
 ## 📄 Important PDFs
 
 - **Documentation.pdf** – Full system report, diagrams, risks, and architecture.  
@@ -72,6 +95,18 @@ The system consists of **two cooperating backends**:
 
 Communication between the ESP32 and backend is strictly **REST over HTTP with JSON payloads**.
 
+---
+
+## ✨ Features
+
+- RFID registration and authentication
+- REST-based access checks (JSON)
+- OLED, RGB LED, buzzer, and touch-button UI
+- Delete-room and delete-user modes
+- Embedded local ESP32 web server
+- Node.js backend with Excel persistence
+- Auto-refresh admin dashboard
+- Multi-room simulation using potentiometer
 
 ---
 
