@@ -14,7 +14,7 @@
 #define BUZZER_PIN 21
 
 // ===== Wi-Fi =====
-const char* WIFI_SSID = "Chimera";
+const char* WIFI_SSID = "REDACTED_SSID";
 const char* WIFI_PASS = "Sranklord1";
 bool useStaticIP = false;
 IPAddress local_IP(172,30,140,200), gateway(172,30,140,129), subnet(255,255,255,128);

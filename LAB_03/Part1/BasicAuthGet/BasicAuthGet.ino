@@ -20,7 +20,7 @@
 #include "arduino_secrets.h"
 ///////please enter your sensitive data in the Secret tab/arduino_secrets.h
 /////// WiFi Settings ///////
-char ssid[] = "Chimera";
+char ssid[] = "REDACTED_SSID";
 char pass[] = "Sranklord1";
 
 char serverAddress[] = "192.168.0.3";  // server address

@@ -15,7 +15,7 @@
 
 // ====== CONFIG ======
 #define BUZZER_PIN 21
-const char* ssid = "Chimera";
+const char* ssid = "REDACTED_SSID";
 const char* password = "Sranklord1";
 
 // API base

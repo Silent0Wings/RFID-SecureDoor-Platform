@@ -6,7 +6,7 @@
 #include <ESP32Servo.h>
 #include <ESPmDNS.h>
 
-const char *ssid = "Chimera";
+const char *ssid = "REDACTED_SSID";
 const char *password = "Sranklord1";
 
 /*

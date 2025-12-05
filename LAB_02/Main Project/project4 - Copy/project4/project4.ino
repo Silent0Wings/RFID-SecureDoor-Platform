@@ -17,7 +17,7 @@
 
 // ===== CONFIG =====
 #define BUZZER_PIN 21
-const char* ssid     = "Chimera";
+const char* ssid     = "REDACTED_SSID";
 const char* password = "Sranklord1";
 const char* bNames   = "IoT_Jukebox";
 static const char* API_BASE = "https://iotjukebox.onrender.com";

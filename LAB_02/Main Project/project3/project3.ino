@@ -14,7 +14,7 @@
 #include "esp_gap_ble_api.h"
 
 // ---------- WIFI ----------
-const char* WIFI_SSID = "Chimera";
+const char* WIFI_SSID = "REDACTED_SSID";
 const char* WIFI_PASS = "Sranklord1";
 
 // ---------- API ----------

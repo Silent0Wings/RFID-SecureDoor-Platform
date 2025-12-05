@@ -7,7 +7,7 @@
 #include "security.h"
 #include "buzzer.h"
 
-const char *ssid = "Chimera";
+const char *ssid = "REDACTED_SSID";
 const char *password = "Sranklord1";
 const char *bNames = "IoT_Jukebox";
 
