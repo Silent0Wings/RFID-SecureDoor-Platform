@@ -12,6 +12,7 @@ This system uses **two backends**:
 All communication between the ESP32 and the Node.js backend is done via **REST endpoints using JSON**.
 
 ---
+![Example](Project/Example.gif)
 
 ## ▶️ How It Works (Quick Example)
 
